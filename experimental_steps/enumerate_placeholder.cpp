@@ -47,7 +47,7 @@ namespace transforms
       }
    };
 
-   struct plain_eval : or_ < when<_, _default<plain_eval> > > {};
+   struct plain_eval : when<_, _default<plain_eval> > {};
 
    struct binary_eval : callable_decltype
    {
