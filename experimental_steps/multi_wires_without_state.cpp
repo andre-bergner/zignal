@@ -8,7 +8,7 @@
 #include <boost/proto/debug.hpp>
 
 #include "callable_decltype.hpp"
-#include "flatten_tuple.hpp"
+#include "tuple_tools.hpp"
 #include "demangle.h"
 
 
