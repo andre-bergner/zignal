@@ -163,7 +163,7 @@ namespace transforms
       auto operator()( LeftExpr const & l , RightExpr const & r , Input const & input ) const
       {
          auto e = eval_it{};
-         auto left_result = flatten_tuple( e( l, mpl::int_<0>{}, ( current_input = input ) ) );
+         auto left_result = flatten_tuple( std::make_tuple(e( l, mpl::int_<0>{}, ( current_input = input ))));
          return e( r, mpl::int_<0>{}, ( current_input = left_result ) );
       }
    };
@@ -273,6 +273,9 @@ int main()
 
    print_ins_and_outs( seq_expr );
    auto seq = compile( seq_expr );
+
+   auto t = compile( _1 |= _1 );
+   t(1);
 
    std::cout << std::get<0>(seq(1337,3)) << std::endl;
 }

@@ -17,3 +17,7 @@ inline std::string demangle(const char* name)
 
     return ret_val;
 }
+
+
+template< typename T >
+inline auto type_name( T t = T{} )  { return demangle(typeid(T).name()); }

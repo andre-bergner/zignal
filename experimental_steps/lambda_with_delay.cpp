@@ -14,22 +14,9 @@
 #include <boost/proto/context.hpp>
 #include <boost/proto/transform.hpp>
 
-#include <cxxabi.h>
+#include "demangle.h"
+#include "tuple_tools.hpp"
 
-std::string demangle(const char* name) {
-
-    int status = -4;
-
-    char* res = abi::__cxa_demangle(name, NULL, NULL, &status);
-
-    const char* const demangled_name = (status==0)?res:name;
-
-    std::string ret_val(demangled_name);
-
-    free(res);
-
-    return ret_val;
-}
 
 //  TODO 
 //  √ use callable transform instead of context
@@ -252,37 +239,6 @@ struct to_array
 };
 
 
-
-//  ------------------------------------------------------------------------------------------------
-// tuple_for_each  --  apply n-ary function on each value in list of n tuples of same size
-
-template< size_t N , size_t n = 0 >
-struct tuple_for_each_impl
-{
-    template< typename F, typename... Tuples >
-    static void apply( F&& f, Tuples&&... tuples )
-    {
-        f( std::get<n>(tuples)... );
-        tuple_for_each_impl<N,n+1>::apply( std::forward<F>(f), std::forward<Tuples>(tuples)... );
-    }
-};
-
-template< size_t N >
-struct tuple_for_each_impl<N,N>
-{
-    template< typename F, typename... Tuples >
-    static void apply( F&& , Tuples&&... ) { }
-};
-
-
-template< typename F, typename... Ts , typename... Tuples >
-// requires (sizeof...(Ts) == tuple_size(Tuples))...
-void tuple_for_each( F&& f , std::tuple<Ts...>& t , Tuples&&... tuples )
-{
-    tuple_for_each_impl< sizeof...(Ts) >::apply( std::forward<F>(f), t, std::forward<Tuples>(tuples)... );
-}
-
-
 //  ------------------------------------------------------------------------------------------------
 // very simple delay_line operation on std::array --> TODO should be own type static_delay_line !
 
@@ -411,7 +367,7 @@ int main()
     {
         using expr_t = decltype(expr);
         using state_t = typename delay_for_placeholder< lambda_arity_t<expr_t>::value, expr_t >::type;
-        std::cout << lambda_arity_t<expr_t>::value << "  " << demangle(typeid(state_t).name()) << std::endl;
+        std::cout << lambda_arity_t<expr_t>::value << "  " << type_name<state_t>() << std::endl;
     };
 
     print_expr_state( _1 + _2 );
