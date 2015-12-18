@@ -4,6 +4,8 @@
 #include <boost/proto/transform.hpp>
 
 #include "callable_decltype.hpp"
+#include "demangle.h"
+#include "tuple_tools.hpp"
 
 namespace mpl = boost::mpl;
 namespace proto = boost::proto;
@@ -58,17 +60,41 @@ namespace transforms
       }
    };
 
+   struct binary_eval2;
+   struct nary_eval;
+
+   struct add : callable_decltype
+   {
+      template< typename L , typename R >
+      auto operator()( L , R ) const
+      {
+         return  mpl::plus<L,R>{};
+      }
+   };
+
    struct evaluate : or_
    <  when
       <  terminal< placeholder >
       ,  place_the_holder( _value , _state )
       >
+   //,  when
+   //   <  terminal<_>
+   //   ,  _value
+   //   >
+   //,  when
+   //   <  binary_expr< _ , _ , _ >          // this should acually be an n-ary eval...
+   //   ,  binary_eval( tag_of<_expr>()
+   //                 , evaluate( _left, _state )
+   //                 , evaluate( _right, mpl::plus< _state, count_placeholders(_left)>() )
+   //                 )
+   //   >
+   //,  when
+   //   <  binary_expr< _ , _ , _ >          // this should acually be an n-ary eval...
+   //   ,  binary_eval2( _expr, _state )
+   //   >
    ,  when
-      <  binary_expr< _ , _ , _ >          // this should acually be an n-ary eval...
-      ,  binary_eval( tag_of<_expr>()
-                    , evaluate( _left, _state )
-                    , evaluate( _right, mpl::plus< _state, count_placeholders(_left)>() )
-                    )
+      <  nary_expr<_, vararg<_>>
+      ,  nary_eval( _expr, _state )
       >
    ,  when
       <  _
@@ -76,6 +102,46 @@ namespace transforms
       >
    >
    {};
+
+
+   struct nary_eval : callable_decltype
+   {
+      template< typename Expr , typename State , std::size_t... Ns >
+      auto apply( std::index_sequence<Ns...> , Expr const & x , State const & s ) const
+      {
+         using      t = typename tag_of<Expr>::type;
+         auto       n = std::make_tuple( count_placeholders{}(child_c<Ns>(x))...);
+         evaluate   e;
+         plain_eval f;
+
+         auto add = [](auto s, auto x) { return typename mpl::plus<decltype(s),decltype(x)>::type{} ; };
+         auto m = std::tuple_cat( std::make_tuple(s) , scan( n, s, add ));
+
+         return f(make_expr<t>( e( child_c<Ns>(x) , std::get<Ns>(m) )... ));
+      }
+
+      template< typename Expr, typename State >
+      auto operator()( Expr const & e , State const & s ) const
+      {
+         using idx_seq = std::make_index_sequence< proto::arity_of<Expr>::value >;
+         return apply( idx_seq{}, e , s );
+      }
+   };
+
+
+   struct binary_eval2 : callable_decltype
+   {
+      template< typename Expr, typename State >
+      auto operator()( Expr const & e , State const & s ) const
+      {
+         using tag = typename tag_of<Expr>::type;
+         evaluate ev;
+         using rs = mpl::plus<State, decltype(count_placeholders{}(_left{}(e))) >;
+         auto l = ev(_left{}(e),s);
+         auto r = ev(_right{}(e),rs{});
+         return plain_eval{}(make_expr<tag>(l,r));
+      }
+   };
 
 
 }
@@ -91,13 +157,19 @@ int main()
 
    auto e = [](auto expr) { return evaluate{}( expr , mpl::int_<0>{} ); };
 
+   std::cout << "--- expecing 0 ---" << std::endl;
    cout << e( (1*_ + 0*_) + 0*_ ) << endl;
    cout << e( 1*_ + (0*_ + 0*_) ) << endl;
+
+   std::cout << "--- expecing 1 ---" << std::endl;
    cout << e( (0*_ + 1*_) + 0*_ ) << endl;
    cout << e( 0*_ + (1*_ + 0*_) ) << endl;
+
+   std::cout << "--- expecing 2 ---" << std::endl;
    cout << e( (0*_ + 0*_) + 1*_ ) << endl;
    cout << e( 0*_ + (0*_ + 1*_) ) << endl;
 
+   std::cout << "--- expecing 3 ---" << std::endl;
    cout << e( (1*_ + 0*_) + (0*_ + 1*_) ) << endl;
    cout << e( (1*_ + 0*_ + 0*_) + 1*_ ) << endl;
    cout << e( 1*_ + (0*_ + 0*_ + 1*_) ) << endl;

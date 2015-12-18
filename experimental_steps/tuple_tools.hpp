@@ -179,6 +179,32 @@ auto tail( std::tuple<Ts...> const & t )
 
 
 
+
+
+
+//  ------------------------------------------------------------------------------------------------
+// scan -- (compile-time) scan (partial fold) for tuples
+//  ------------------------------------------------------------------------------------------------
+
+template < typename F, typename X >
+auto scan( std::tuple<> const & t , X x , F&& f )
+{
+   return std::make_tuple();
+}
+
+template < typename F, typename X, typename... Ts >
+auto scan( std::tuple<Ts...> const & t , X x , F&& f )
+{
+   auto y = f(x,std::get<0>(t));
+   return tuple_cat( std::make_tuple(y) , scan( tuple_drop<1>(t), y, std::forward<F>(f) ));
+}
+
+
+
+//  ------------------------------------------------------------------------------------------------
+// print(tuple) -- debug
+//  ------------------------------------------------------------------------------------------------
+
 //namespace { struct placeholder_arg {} _; }
 
 //std::ostream& operator<<( std::ostream& o , placeholder_arg ) { o << '_'; return o; }
