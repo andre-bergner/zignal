@@ -205,25 +205,24 @@ auto scan( std::tuple<Ts...> const & t , X x , F&& f )
 // print(tuple) -- debug
 //  ------------------------------------------------------------------------------------------------
 
-//namespace { struct placeholder_arg {} _; }
 
-//std::ostream& operator<<( std::ostream& o , placeholder_arg ) { o << '_'; return o; }
+template < typename... Ts >
+auto operator<<( std::ostream& os , std::tuple<Ts...> const & t ) -> std::ostream&;
 
-void print( std::tuple<> t )
+template < std::size_t... Ns, typename Tuple >
+void print_tuple( std::index_sequence<Ns...> , std::ostream& os, Tuple const & t )
 {
-   std::cout << std::endl;
+   std::tie( (os << std::get<Ns>(t) << ((Ns+1<std::tuple_size<Tuple>::value)? " ":"") )... );
 }
 
-template < typename T , typename... Ts >
-void print( std::tuple<T , Ts...> t )
+template < typename... Ts >
+auto operator<<( std::ostream& os , std::tuple<Ts...> const & t ) -> std::ostream&
 {
-   std::cout << std::get<0>(t) << "  ";
-   print( tail(t) );
+   os << "(";
+   print_tuple( std::make_index_sequence< sizeof...(Ts) >(), os, t );
+   os << ")";
+   return os;
 }
 
-
-
-
-
-
-
+template < typename... Ts >
+void print( std::tuple<Ts...> t ) { std::cout << t << std::endl; }
