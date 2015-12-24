@@ -82,7 +82,14 @@ namespace detail {
    auto tuple_drop_impl( Tuple&& t , std::index_sequence<Ns...> )
    {
       using namespace std;
-      return make_tuple( std::get<N+Ns>(t)... );
+      return std::make_tuple( std::get<N+Ns>(t)... );
+   }
+
+   template< size_t N , typename Tuple, std::size_t... Ns >
+   auto tuple_drop_impl( Tuple& t , std::index_sequence<Ns...> )
+   {
+      using namespace std;
+      return std::tie( std::get<N+Ns>(t)... );
    }
 
    template< size_t N , typename Tuple , typename
@@ -99,7 +106,6 @@ namespace detail {
    {
       return std::tuple<>{};
    }
-
 
 }
 
@@ -142,7 +148,7 @@ using all_of_ = std::is_same< std::integer_sequence<bool, bs...>
 template< typename F, typename... Ts , typename... Tuples >
 void tuple_for_each( F&& f , std::tuple<Ts...>& t , Tuples&&... tuples )
 {
-   static_assert( all_of_<(sizeof...(Ts) == std::tuple_size<Tuples>::value)...>::value
+   static_assert( all_of_<(sizeof...(Ts) == std::tuple_size<std::decay_t<Tuples>>::value)...>::value
                 , "all Tuples must have same size"
                 );
    tuple_for_each_impl< sizeof...(Ts) >::apply( std::forward<F>(f), t, std::forward<Tuples>(tuples)... );
@@ -185,8 +191,6 @@ auto tail( std::tuple<Ts...> const & t )
 
 
 
-
-
 //  ------------------------------------------------------------------------------------------------
 // scan -- (compile-time) scan (partial fold) for tuples
 //  ------------------------------------------------------------------------------------------------
@@ -206,6 +210,30 @@ auto scan( std::tuple<Ts...> const & t , X x , F&& f )
 
 
 
+
+//  ------------------------------------------------------------------------------------------------
+// deep_tie -- 
+//  ------------------------------------------------------------------------------------------------
+
+template < typename T >
+auto deep_tie( T& t ) { return t; }
+
+template < typename... Ts >
+auto deep_tie( std::tuple<Ts...>& t );
+
+template < std::size_t... Ns, typename... Ts >
+auto deep_tie( std::index_sequence<Ns...>, std::tuple<Ts...>& t )
+{
+   return  std::tie( deep_tie(std::get<Ns>(t))... );
+}
+
+template < typename... Ts >
+auto deep_tie( std::tuple<Ts...>& t )
+{
+   return deep_tie( std::make_index_sequence< sizeof...(Ts) >() , t );
+}
+
+
 //  ------------------------------------------------------------------------------------------------
 // print(tuple) -- debug
 //  ------------------------------------------------------------------------------------------------
@@ -213,6 +241,9 @@ auto scan( std::tuple<Ts...> const & t , X x , F&& f )
 
 template < typename... Ts >
 auto operator<<( std::ostream& os , std::tuple<Ts...> const & t ) -> std::ostream&;
+
+template < typename T , std::size_t N >
+auto operator<<( std::ostream& os , std::array<T,N> const & t ) -> std::ostream&;
 
 template < std::size_t... Ns, typename Tuple >
 void print_tuple( std::index_sequence<Ns...> , std::ostream& os, Tuple const & t )
@@ -231,3 +262,16 @@ auto operator<<( std::ostream& os , std::tuple<Ts...> const & t ) -> std::ostrea
 
 template < typename... Ts >
 void print( std::tuple<Ts...> t ) { std::cout << t << std::endl; }
+
+
+
+template < typename T , std::size_t N >
+auto operator<<( std::ostream& os , std::array<T,N> const & t ) -> std::ostream&
+{
+   os << "(";
+   print_tuple( std::make_index_sequence<N>(), os, t );
+   os << ")";
+   return os;
+}
+
+

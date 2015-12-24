@@ -60,6 +60,28 @@ BOOST_PROTO_DEFINE_ENV_VAR( delayed_input_t, delayed_input );
 
 
 
+//  ------------------------------------------------------------------------------------------------
+// very simple delay_line operation on std::array --> TODO should be own type static_delay_line !
+
+struct
+{
+    template< typename T , size_t N , typename Y >
+    void operator()( std::array<T,N>& xs , Y y ) const
+    {
+        for ( size_t n = 1 ; n < xs.size() ; ++n )  xs[n-1] = xs[n];
+        xs.back() = y;
+    }
+
+    template< typename T , typename Y >
+    void operator()( std::array<T,0>& xs , Y y ) const { }
+
+    template< typename T , typename Y >   // if input is not an array, e.g. for not fully
+    void operator()( T& , Y ) const { }   // unpacked state while traversing the tree (tuple o'tuples)
+}
+rotate_push_back;
+
+
+
 namespace transforms
 {
    using namespace proto;
@@ -258,7 +280,7 @@ namespace transforms
       <  sequence_operator
       ,  tuple_cat_fn
          (  input_delays(_left)
-         ,  tuple_drop_
+         ,  tuple_drop_ // <-- problem here????
             (  output_arity(_left)
             ,  input_delays(_right)
             )
@@ -302,10 +324,6 @@ namespace transforms
             (  apply( _left  , StateCtor(input_delays( _left  )) )
             ,  apply( _right , StateCtor(input_delays( _right )) )
             )
-   //      ,  tuple_cat_fn
-   //         (  apply( _left  , make_tuple_fn(input_delays( _left )) )
-   //         ,  apply( _right , make_tuple_fn(input_delays( _right )) )
-   //         )
          >
       ,  otherwise< _state >
       >
@@ -315,41 +333,6 @@ namespace transforms
    template < typename StateCtor = identity >
    using build_state = typename build_state_impl<StateCtor>::apply;
 
-/*
-   struct binary_eval : callable_decltype
-   {
-      template< typename Tag ,  typename Left , typename Right >
-      auto operator()( Tag , Left const & l , Right const & r ) const
-      {
-         return _default<>{}(make_expr<Tag>( l , r ));
-      }
-   };
-
-   struct apply_state : or_
-   <  when
-      <  terminal<_>
-      ,  std::tuple<>()
-      >
-   ,  when
-      <  sequence_operator
-      ,  binary_eval( tag_of<_expr>()
-                    , apply_state( _left, _state )
-                    , apply_state( _right, mpl::plus< _state, count_placeholders(_left)>() )
-                    )
-      >
-
-   >
-   {};
-*/
-
-
-   /*
-    *
-    *   eval_it = state0 &full_state
-    *           | seq_op : evl?( eval_it( left, get<0>(&state) )
-    *                          , eval_it( right, drop<1>(&state) )
-    *
-    */
 
    //  ---------------------------------------------------------------------------------------------
    // Evaluators -- transforms that work together for the evaluation of flowz-expressions
@@ -359,7 +342,6 @@ namespace transforms
    struct place_delay;
    struct sequence;
    struct parallel;
-   struct collect_wires;
 
 
    struct eval_it : or_
@@ -369,7 +351,7 @@ namespace transforms
       >
    ,  when
       <  terminal< placeholder<_> >
-      ,  place_the_holder( _value , _state , _env_var<current_input_t> )
+      ,  place_the_holder( _value , _env_var<current_input_t> )
       >
    ,  when
       <  sequence_operator
@@ -381,7 +363,7 @@ namespace transforms
       >
    ,  when
       <  channel_operator    //  grammar rule: only allowed after sequence or recursion at top of sub-tree
-      ,  collect_wires( eval_it(_left), eval_it(_right) )
+      ,  make_tuple_fn( eval_it(_left), eval_it(_right) )
       >
    ,  when
       <  _
@@ -400,8 +382,8 @@ namespace transforms
 
    struct place_the_holder : callable_decltype
    {
-      template < typename I , typename S , typename Tuple >
-      auto operator()( placeholder<I> const & , S , Tuple const & args ) const
+      template < typename I , typename Tuple >
+      auto operator()( placeholder<I> const & , Tuple const & args ) const
       {
          return std::get<I::value-1>( args );
       }
@@ -420,18 +402,32 @@ namespace transforms
    struct sequence : callable_decltype
    {
       template < typename LeftExpr , typename RightExpr , typename Input , typename Delay >
-      auto operator()( in_t<LeftExpr> l , in_t<RightExpr> r , in_t<Input> input , in_t<Delay> del ) const
+      auto operator()( in_t<LeftExpr> l , in_t<RightExpr> r , in_t<Input> input , Delay& delay ) const
       {
          auto e = eval_it{};
-         auto left_result = flatten_tuple( std::make_tuple(e( l, mpl::int_<0>{}, ( current_input = input , delayed_input = del ))));
-         return e( r, mpl::int_<0>{}, ( current_input = left_result , delayed_input = del ) );
+
+         auto& ls = std::get<0>(delay);
+         auto& rs = std::get<1>(delay);
+
+         auto left_result =
+            flatten_tuple( std::make_tuple(
+               e( l, 0, ( current_input = input , delayed_input = boost::ref(ls) ))
+            ));
+         tuple_for_each( rotate_push_back, ls, input );
+
+         auto res = e( r, 0, ( current_input = left_result , delayed_input = boost::ref(rs) ) );
+         tuple_for_each( rotate_push_back, rs, left_result );
+
+         std::cout << "rs: " << rs << "     ";
+
+         return res;
       }
    };
 
    struct parallel : callable_decltype
    {
       template < typename LeftExpr , typename RightExpr , typename Input , typename Delay >
-      auto operator()( in_t<LeftExpr> l , in_t<RightExpr> r , in_t<Input> input , in_t<Delay> del ) const
+      auto operator()( in_t<LeftExpr> l , in_t<RightExpr> r , in_t<Input> input , Delay& del ) const
       {
          auto e = eval_it{};
          auto left_state  = ( current_input = input , delayed_input = del );
@@ -439,19 +435,10 @@ namespace transforms
                             , delayed_input = tuple_drop<input_arity_t<LeftExpr>::value>(del)
                             );
          return std::make_tuple
-                (  e( l, mpl::int_<0>{}, left_state )
-                ,  e( r, mpl::int_<0>{}, right_state )
+                (  e( l, 0, left_state )
+                ,  e( r, 0, right_state )
                 );
       }
-   };
-
-   struct collect_wires : callable_decltype
-   {
-      template < typename Left , typename Right >
-      auto operator()( Left const & l , Right const & r ) const
-      {
-         return std::make_tuple( l, r );
-      }      
    };
 
 }
@@ -495,35 +482,26 @@ using lift_into_tuple_t = typename lift_into_tuple<F,Tuple>::type;
 template< typename T >
 struct to_array
 {
-    template< typename Int >
-    struct apply
-    {
-        using type = std::array< T , Int::value >;
-    };
+   template< typename Int >
+   struct apply
+   {
+      using type = std::array< T , std::decay_t<Int>::value >;
+   };
 
-    template< typename Int >
-    using apply_t = typename apply<Int>::type;
+   template< typename Int >
+   using apply_t = typename apply<Int>::type;
+
 };
 
-
-
-//  ------------------------------------------------------------------------------------------------
-// very simple delay_line operation on std::array --> TODO should be own type static_delay_line !
-
-struct
+template < typename T >
+struct to_array_tuple
 {
-    template< typename T , size_t N , typename Y >
-    void operator()( std::array<T,N>& xs , Y y ) const
-    {
-        for ( size_t n = 1 ; n < xs.size() ; ++n )  xs[n-1] = xs[n];
-        xs.back() = y;
-    }
-
-    template< typename T , typename Y >
-    void operator()( std::array<T,0>& xs , Y y ) const { }
-}
-rotate_push_back;
-
+   struct apply : proto::callable_decltype
+   {
+       template< typename Tuple >
+       auto operator()( Tuple ) { return lift_into_tuple_t< to_array<T>, Tuple > {}; }
+   };
+};
 
 
 
@@ -548,8 +526,10 @@ private:
    template < typename... Args >
    auto call_impl( mpl::int_<0> , Args const &... args ) -> decltype(auto)
    {
-      auto result = eval_it{}( expr_, mpl::int_<0>{}, ( current_input = std::make_tuple(args...) , delayed_input = state_ ) );
-      tuple_for_each( rotate_push_back, state_, std::make_tuple(args...) );
+      auto ref_state = std::tie( std::get<0>(state_) , std::get<1>(state_) );
+      auto result = eval_it{}( expr_, 0, ( current_input = std::make_tuple(args...) , delayed_input = boost::ref(ref_state) ) );
+
+      //tuple_for_each( rotate_push_back, state_, std::make_tuple(args...) );
       return flatten_tuple( std::make_tuple( result ));
    }
 
@@ -584,7 +564,10 @@ auto compile = []( auto expr )        // TODO need to define value_type for stat
    using tuple_t = decltype( input_delays{}( expr ) );
    using state_t = lift_into_tuple_t< to_array<float> , tuple_t >;
 
-   return stateful_lambda< expr_t, state_t, arity_t::value>{ expr };
+   auto builder = build_state< to_array_tuple<float>::apply >{};
+   using state_t2 = decltype( builder(expr) );
+
+   return stateful_lambda< expr_t, state_t2, arity_t::value>{ expr };
 };
 
 
@@ -629,26 +612,37 @@ int main()
                       |= e2 | (_1*_1)
                   );
 
-   print( input_delays{}(seq_expr));
-
+   //print( input_delays{}(seq_expr));
+   //std::cout << type_name<decltype( input_delays{}( _2+_1 ) )>() << std::endl;
+   compile( _2+_1 );
+   //type_name<decltype( input_delays{}( _2+_1 ) )>();
+   //std::cout << type_name(decltype(input_delays{}( ((_1|_1) |= (_1[_2] - _2[_3])) |= _1[_1] )) ) << std::endl;
+/*
    print_ins_and_outs( seq_expr );
    auto seq = compile( seq_expr );
 
    std::cout << std::get<1>(seq(1337,3,4)(3)) << std::endl;
-
+*/
    std::cout << "-------------------------" << std::endl;
    build_state<> b;
+   build_state< to_array_tuple<float>::apply > d;
    std::cout << b( (_2[_1] |= _1[_2]) |= (_1[_3] |= _3[_4]) ) << std::endl;
    std::cout << b(  _2[_1] |= (_1[_2] |=  _1[_3] |= _3[_4]) ) << std::endl;
    std::cout << b( (_2[_1] |=  _1[_2] |=  _1[_3]) |= _3[_4] ) << std::endl;
    std::cout << b( _1, std::tuple<>{} ) << std::endl;
+   std::cout << type_name( d( (_2[_1] |= _1[_2]) |= (_1[_3] |= _3[_4]) )) << std::endl;
    std::cout << "-------------------------" << std::endl;
 
-   auto z = compile( (_1[_1] , _1) |= (_2*_2-_1) );
+   //auto z = compile( (_1[_1] , _1) |= (_2*_2-_1) );
+   //auto z = compile( (_1 , _1) |= (_2-_1[_1]) );
+   auto z = compile( ((_1|_1) |= (_1[_2] - _2[_3])) |= _1[_1] );
 
-   std::cout << std::get<0>(z(1)) << std::endl;
-   std::cout << std::get<0>(z(2)) << std::endl;
-   std::cout << std::get<0>(z(1)) << std::endl;
-   std::cout << std::get<0>(z(3)) << std::endl;
+   std::cout << std::get<0>(z(1,1)) << std::endl;
+   std::cout << std::get<0>(z(1,2)) << std::endl;
+   std::cout << std::get<0>(z(1,3)) << std::endl;
+   std::cout << std::get<0>(z(1,4)) << std::endl;
+   std::cout << std::get<0>(z(1,5)) << std::endl;
+   std::cout << std::get<0>(z(1,6)) << std::endl;
+   std::cout << std::get<0>(z(3,10)) << std::endl;
 
 }
