@@ -228,7 +228,7 @@ namespace transforms
    }
 
    template < typename Tuple1, typename Tuple2 >
-   auto zip_with_max( Tuple1&&, Tuple2 t2, std::index_sequence<> )
+   auto zip_with_max( Tuple1&&, Tuple2&&, std::index_sequence<> )
    {
       return std::tuple<>{};
    }
@@ -236,7 +236,7 @@ namespace transforms
    struct max_delay_of_wires : callable_decltype
    {
       template < typename Tuple_l , typename Tuple_r >
-      auto operator()( Tuple_l&& tl, Tuple_r tr ) const
+      auto operator()( Tuple_l&& tl, Tuple_r&& tr ) const
       {
          using tuple_tl = std::decay_t<Tuple_l>;
          using tuple_tr = std::decay_t<Tuple_r>;
@@ -244,8 +244,8 @@ namespace transforms
                                            , mpl::int_<std::tuple_size<tuple_tr>::value>
                                            >::type;
          return  std::tuple_cat(  zip_with_max(tl,tr,std::make_index_sequence<min_size::value>{})
-                               ,  tuple_drop<min_size::value>(tl)
-                               ,  tuple_drop<min_size::value>(tr)
+                               ,  tuple_drop<min_size::value>( std::forward<Tuple_l>(tl) )
+                               ,  tuple_drop<min_size::value>( std::forward<Tuple_r>(tr) )
                                );
       }
    };
@@ -612,17 +612,14 @@ int main()
                       |= e2 | (_1*_1)
                   );
 
-   //print( input_delays{}(seq_expr));
-   //std::cout << type_name<decltype( input_delays{}( _2+_1 ) )>() << std::endl;
-   compile( _2+_1 );
-   //type_name<decltype( input_delays{}( _2+_1 ) )>();
-   //std::cout << type_name(decltype(input_delays{}( ((_1|_1) |= (_1[_2] - _2[_3])) |= _1[_1] )) ) << std::endl;
-/*
+   print( input_delays{}(seq_expr));
+
    print_ins_and_outs( seq_expr );
    auto seq = compile( seq_expr );
 
    std::cout << std::get<1>(seq(1337,3,4)(3)) << std::endl;
-*/
+
+
    std::cout << "-------------------------" << std::endl;
    build_state<> b;
    build_state< to_array_tuple<float>::apply > d;
