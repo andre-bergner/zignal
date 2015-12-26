@@ -40,10 +40,9 @@ namespace building_blocks
    //  ---------------------------------------------------------------------------------------------
    // block composition operators -- TODO needs correct grammar as arguments
 
-   using channel_operator  = comma< _ , _ >;
-   using parallel_operator = bitwise_or< _ , _ >;
-   using sequence_operator = bitwise_or_assign< _ , _ >;
-
+   using channel_operator  = comma              < _ , _ >;
+   using parallel_operator = bitwise_or         < _ , _ >;
+   using sequence_operator = bitwise_or_assign  < _ , _ >;
 }
 
 using building_blocks :: placeholder;
@@ -150,23 +149,6 @@ namespace transforms
    >
    {};
 
-
-
-   template < std::size_t N , typename T >
-   struct repeat;
-   
-   template < std::size_t N , typename T >
-   using  repeat_t = typename repeat<N,T>::type;
-
-
-   template < std::size_t N , typename T >
-   struct repeat
-   {
-      using type = tuple_cat_t< repeat_t<N-1,T> , std::tuple<T> >;
-   };
-
-   template < typename T >
-   struct repeat<0,T> { using type = std::tuple<>; };
 
 
    template < typename arity , typename delay = mpl::int_<0> >
@@ -297,15 +279,6 @@ namespace transforms
 
    template < typename Expr >
    using input_arity_t = typename boost::result_of<input_arity(Expr)>::type;
-
-   template < typename... Tuples >
-   struct tuple_cat_t_impl
-   {
-      using type = decltype( std::tuple_cat( std::declval<Tuples>()... ));
-   };
-
-   template < typename... Tuples >
-   using tuple_cat_t = typename tuple_cat_t_impl< Tuples... >::type;
 
 
    struct identity : callable_decltype
@@ -561,13 +534,11 @@ auto compile = []( auto expr )        // TODO need to define value_type for stat
 {
    using expr_t = decltype(expr);
    using arity_t = input_arity_t<expr_t>;
-   using tuple_t = decltype( input_delays{}( expr ) );
-   using state_t = lift_into_tuple_t< to_array<float> , tuple_t >;
 
    auto builder = build_state< to_array_tuple<float>::apply >{};
-   using state_t2 = decltype( builder(expr) );
+   using state_t = decltype( builder(expr) );
 
-   return stateful_lambda< expr_t, state_t2, arity_t::value>{ expr };
+   return stateful_lambda< expr_t, state_t, arity_t::value>{ expr };
 };
 
 

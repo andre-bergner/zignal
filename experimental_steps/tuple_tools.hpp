@@ -116,6 +116,36 @@ auto tuple_drop( Tuple&& t )
    return detail::tuple_drop<N>( std::forward<Tuple>(t) , 0 );
 }
 
+
+//  ------------------------------------------------------------------------------------------------
+// tuple_cat_t -- (compile-time) concatination of tuples
+//  ------------------------------------------------------------------------------------------------
+
+template< typename... Tuples >
+using tuple_cat_t = decltype( std::tuple_cat( std::declval<Tuples>()... ));
+
+
+
+//  ------------------------------------------------------------------------------------------------
+// repeat<N,T>  --  creates a tuple of type T repeated N times.
+//  ------------------------------------------------------------------------------------------------
+
+template < std::size_t N , typename T >
+struct repeat;
+
+template < std::size_t N , typename T >
+using  repeat_t = typename repeat<N,T>::type;
+
+
+template < std::size_t N , typename T >
+struct repeat
+{
+   using type = tuple_cat_t< repeat_t<N-1,T> , std::tuple<T> >;
+};
+
+template < typename T >
+struct repeat<0,T> { using type = std::tuple<>; };
+
 //  ------------------------------------------------------------------------------------------------
 // tuple_for_each  --  apply n-ary function on each value in list of n tuples of same size
 //  ------------------------------------------------------------------------------------------------
@@ -153,15 +183,6 @@ void tuple_for_each( F&& f , std::tuple<Ts...>& t , Tuples&&... tuples )
                 );
    tuple_for_each_impl< sizeof...(Ts) >::apply( std::forward<F>(f), t, std::forward<Tuples>(tuples)... );
 }
-
-
-//  ------------------------------------------------------------------------------------------------
-// tuple_cat_t -- (compile-time) concatination of tuples
-//  ------------------------------------------------------------------------------------------------
-
-template< typename... Tuples >
-using tuple_cat_t = decltype( std::tuple_cat( std::declval<Tuples>()... ));
-
 
 
 //  ------------------------------------------------------------------------------------------------
