@@ -169,19 +169,12 @@ struct tuple_for_each_impl<N,N>
 };
 
 
-template < bool... bs >
-using all_of_ = std::is_same< std::integer_sequence<bool, bs...>
-                            , std::integer_sequence<bool, (bs,true)...>
-                            >;
-
-
-template< typename F, typename... Ts , typename... Tuples >
-void tuple_for_each( F&& f , std::tuple<Ts...>& t , Tuples&&... tuples )
+template< typename F, typename... Tuples >
+void tuple_for_each( F&& f , Tuples&&... tuples )
 {
-   static_assert( all_of_<(sizeof...(Ts) == std::tuple_size<std::decay_t<Tuples>>::value)...>::value
-                , "all Tuples must have same size"
-                );
-   tuple_for_each_impl< sizeof...(Ts) >::apply( std::forward<F>(f), t, std::forward<Tuples>(tuples)... );
+   using namespace std;
+   using min_size = std::integral_constant< size_t, min({ tuple_size<decay_t<Tuples>>::value... }) >;
+   tuple_for_each_impl< min_size::value >::apply( forward<F>(f), forward<Tuples>(tuples)... );
 }
 
 

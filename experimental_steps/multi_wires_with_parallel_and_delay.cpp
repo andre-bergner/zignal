@@ -386,14 +386,20 @@ namespace transforms
             flatten_tuple( std::make_tuple(
                e( l, 0, ( current_input = input , delayed_input = boost::ref(ls) ))
             ));
+
          tuple_for_each( rotate_push_back, ls, input );
+         using left_size = std::tuple_size<decltype(left_result)>;
+         auto right_input = tuple_cat( left_result, tuple_drop<left_size::value>(input) );
 
-         auto res = e( r, 0, ( current_input = left_result , delayed_input = boost::ref(rs) ) );
+
+         auto right_result =
+            flatten_tuple( std::make_tuple(
+               e( r, 0, ( current_input = right_input , delayed_input = boost::ref(rs)) )
+            ));
+
          tuple_for_each( rotate_push_back, rs, left_result );
-
-         std::cout << "rs: " << rs << "     ";
-
-         return res;
+         using right_size = std::tuple_size<decltype(right_result)>;
+         return tuple_cat( right_result, tuple_drop<right_size::value>(std::move(left_result)) );
       }
    };
 
@@ -499,10 +505,7 @@ private:
    template < typename... Args >
    auto call_impl( mpl::int_<0> , Args const &... args ) -> decltype(auto)
    {
-      auto ref_state = std::tie( std::get<0>(state_) , std::get<1>(state_) );
-      auto result = eval_it{}( expr_, 0, ( current_input = std::make_tuple(args...) , delayed_input = boost::ref(ref_state) ) );
-
-      //tuple_for_each( rotate_push_back, state_, std::make_tuple(args...) );
+      auto result = eval_it{}( expr_, 0, ( current_input = std::make_tuple(args...) , delayed_input = boost::ref(state_) ) );
       return flatten_tuple( std::make_tuple( result ));
    }
 
@@ -558,16 +561,6 @@ const proto::terminal< placeholder< mpl::int_<6> >>::type   _6  = {{}};
 
 int main()
 {
-   /*
-   std::cout << "-------------------------" << std::endl;
-   print( input_delays{}(_5[_2]) );
-   print( input_delays{}(_5+1) );
-   print( input_delays{}(_5 | _2[_4]) );
-   print( input_delays{}((_5,_1,_1,_1) |= _6[_2]) );
-   print( input_delays{}((_5-_1[_3]) |= _2[_2]) );
-   std::cout << "-------------------------" << std::endl;
-   */
-
    auto print_ins_and_outs = []( auto const & expr )
    {
        std::cout << "-------------------------" << std::endl;
@@ -601,8 +594,6 @@ int main()
    std::cout << type_name( d( (_2[_1] |= _1[_2]) |= (_1[_3] |= _3[_4]) )) << std::endl;
    std::cout << "-------------------------" << std::endl;
 
-   //auto z = compile( (_1[_1] , _1) |= (_2*_2-_1) );
-   //auto z = compile( (_1 , _1) |= (_2-_1[_1]) );
    auto z = compile( ((_1|_1) |= (_1[_2] - _2[_3])) |= _1[_1] );
 
    std::cout << std::get<0>(z(1,1)) << std::endl;
@@ -613,4 +604,13 @@ int main()
    std::cout << std::get<0>(z(1,6)) << std::endl;
    std::cout << std::get<0>(z(3,10)) << std::endl;
 
+   auto wire_around_prev_box = (_1 |= _2);
+   print_ins_and_outs( wire_around_prev_box );
+   auto wp = compile( wire_around_prev_box );
+   std::cout << wp(2,1337) << std::endl;
+
+   auto wire_around_succ_box = ( (_1,_1) |= _1);
+   print_ins_and_outs( wire_around_succ_box );
+   auto ws = compile( wire_around_succ_box );
+   std::cout << ws(1337) << std::endl;
 }

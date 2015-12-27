@@ -1,3 +1,8 @@
+//   -----------------------------------------------------------------------------------------------
+//    Copyright 2015 André Bergner. Distributed under the Boost Software License, Version 1.0.
+//     (See accompanying file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
+//      --------------------------------------------------------------------------------------------
+
 #include <iostream>
 #include <boost/mpl/int.hpp>
 #include <boost/mpl/min_max.hpp>
@@ -181,8 +186,14 @@ namespace transforms
       auto operator()( LeftExpr const & l , RightExpr const & r , Input const & input ) const
       {
          auto e = eval_it{};
-         auto left_result = flatten_tuple( e( l, mpl::int_<0>{}, ( current_input = input ) ) );
-         return e( r, mpl::int_<0>{}, ( current_input = left_result ) );
+
+         auto left_result = flatten_tuple( std::make_tuple(e( l, 0, ( current_input = input ) ) ));
+         using left_size = std::tuple_size<decltype(left_result)>;
+         auto right_input = tuple_cat( left_result, tuple_drop<left_size::value>(input) );
+
+         auto right_result = flatten_tuple( std::make_tuple(e( r, 0, ( current_input = right_input ) ) ));
+         using right_size = std::tuple_size<decltype(right_result)>;
+         return tuple_cat( right_result, tuple_drop<right_size::value>(std::move(left_result)) );
       }
    };
 
@@ -195,8 +206,8 @@ namespace transforms
          auto left_state  = ( current_input = input );
          auto right_state = ( current_input = tuple_drop<input_arity_t<LeftExpr>::value>(input) );
          return std::make_tuple
-                (  e( l, mpl::int_<0>{}, left_state )
-                ,  e( r, mpl::int_<0>{}, right_state )
+                (  e( l, 0, left_state )
+                ,  e( r, 0, right_state )
                 );
       }
    };
@@ -238,7 +249,7 @@ private:
    template< typename... Args >
    auto call_impl( mpl::int_<0> , Args const &... args ) const -> decltype(auto)
    {
-      auto result = eval_it{}( expr_, mpl::int_<0>{}, ( current_input = std::make_tuple(args...) ) );
+      auto result = eval_it{}( expr_, 0, ( current_input = std::make_tuple(args...) ) );
       return flatten_tuple( std::make_tuple( result ));
    }
 
@@ -308,4 +319,16 @@ int main()
    auto seq = compile( seq_expr );
 
    std::cout << std::get<1>(seq(1337,3,4)(3)) << std::endl;
+
+   auto wire_around_prev_box = (_1 |= _2);
+   print_ins_and_outs( wire_around_prev_box );
+   auto wp = compile( wire_around_prev_box );
+   std::cout << wp(2,1337) << std::endl;
+
+   auto wire_around_succ_box = ( (_1,_1) |= _1);
+   print_ins_and_outs( wire_around_succ_box );
+   auto ws = compile( wire_around_succ_box );
+   std::cout << ws(1337) << std::endl;
 }
+
+
