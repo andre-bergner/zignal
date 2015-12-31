@@ -20,4 +20,7 @@ inline std::string demangle(const char* name)
 
 
 template< typename T >
-inline auto type_name( T t = T{} )  { return demangle(typeid(T).name()); }
+inline auto type_name( T t )  { return demangle(typeid(T).name()); }
+
+template< typename T >
+inline auto type_name()       { return demangle(typeid(T).name()); }

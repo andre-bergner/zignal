@@ -64,6 +64,8 @@ BOOST_PROTO_DEFINE_ENV_VAR( delayed_input_t, delayed_input );
 //  ------------------------------------------------------------------------------------------------
 // very simple delay_line operation on std::array --> TODO should be own type static_delay_line !
 
+struct no_state {};
+
 struct
 {
     template< typename T , size_t N , typename Y >
@@ -74,7 +76,10 @@ struct
     }
 
     template< typename T , typename Y >
-    void operator()( std::array<T,0>& xs , Y y ) const { }
+    void operator()( std::array<T,0>& , Y ) const { }
+
+    template< typename T , typename Y >
+    void operator()( no_state , Y ) const { }
 
     template< typename T , typename Y >   // if input is not an array, e.g. for not fully
     void operator()( T& , Y ) const { }   // unpacked state while traversing the tree (tuple o'tuples)
@@ -521,18 +526,24 @@ using lift_into_tuple_t = typename lift_into_tuple<F,Tuple>::type;
 //  ------------------------------------------------------------------------------------------------
 // to_array  --  meta-function that maps mpl::int_<N> to array<T,N>
 
+template< typename T , typename Int >
+struct to_array_impl
+{
+   using type = std::array< T , std::decay_t<Int>::value >;
+};
+
+template< typename T >
+struct to_array_impl< T, mpl::int_<0> >
+{
+   using type = no_state;     // array<T,N> prevents empty base class optimization to kick in.
+};
+
+
 template< typename T >
 struct to_array
 {
    template< typename Int >
-   struct apply
-   {
-      using type = std::array< T , std::decay_t<Int>::value >;
-   };
-
-   template< typename Int >
-   using apply_t = typename apply<Int>::type;
-
+   using apply_t = typename to_array_impl<T,Int>::type;
 };
 
 template < typename T >
@@ -585,11 +596,11 @@ private:
 
 public:
 
-   stateful_lambda( Expression expr ) : expr_( std::move(expr))
+   stateful_lambda( Expression expr ) : expr_( expr )
    {
-      std::cout << "size expr:  " << sizeof(expr_)  << std::endl;
-      std::cout << "size state: " << sizeof(state_) << std::endl;
-      std::cout << "state: " << type_name(state_) << std::endl;
+      std::cout << "• size expr:  " << sizeof(expr_)  << std::endl;
+      std::cout << "• size state: " << sizeof(state_) << std::endl;
+      std::cout << "• state: " << type_name(state_) << std::endl;
    }
 
    template < typename... Args , typename = std::enable_if_t< sizeof...(Args) <= arity > >
@@ -601,22 +612,17 @@ public:
 
 
 // TODO template input type determinse state type (float)
-auto compile = []( auto expr )        // TODO need to define value_type for state
+auto compile = []( auto expr_ )        // TODO need to define value_type for state
 {
+   auto expr = proto::deep_copy(expr_);
    using expr_t = decltype(expr);
    using arity_t = input_arity_t<expr_t>;
 
    auto builder = build_state< to_array_tuple<float>::apply >{};
    using state_t = decltype( builder(expr) );
 
-   std::cout << "state: " << type_name<state_t>() << std::endl;
-
    return stateful_lambda< expr_t, state_t, arity_t::value>{ expr };
 };
-
-
-
-
 
 
 
@@ -626,7 +632,6 @@ const proto::terminal< placeholder< mpl::int_<3> >>::type   _3  = {{}};
 const proto::terminal< placeholder< mpl::int_<4> >>::type   _4  = {{}};
 const proto::terminal< placeholder< mpl::int_<5> >>::type   _5  = {{}};
 const proto::terminal< placeholder< mpl::int_<6> >>::type   _6  = {{}};
-
 
 
 int main()
@@ -643,7 +648,7 @@ int main()
    std::cout << "feedback ---------------" << std::endl;
    auto z1 = _1[_1];
    auto z2 = _1[_2];
-   auto fb_expr = (   ~(0.9f*z1 - 0.8f*z2 + _2)
+   auto fb_expr = proto::deep_copy(   ~(0.9f*_1[_1] - 0.8f*_1[_2] + _2)
                   //|=  ~(0.9*z1 - 0.8*z2 + _2)
                   //|=  ~(0.9*z1 - 0.8*z2 + _2)
                   //|=  ~(0.9*z1 - 0.8*z2 + _2)
@@ -675,8 +680,8 @@ int main()
    //std::cout << fb(0.f) << std::endl;
 
 
-   compile( ~( (_2,_3,_1,_4)  |=  (.9f*_1+_2) | (-.1f*_1+_2)) );
-
+//   print_ins_and_outs( ( ~( (_2,_3,_1,_4)  |=  (.9f*_1+_2) | (-.1f*_1+_2)) ));
+/*
    auto wire_around_prev_box = (_1 |= _2);
    print_ins_and_outs( wire_around_prev_box );
    auto wp = compile( wire_around_prev_box );
@@ -686,5 +691,5 @@ int main()
    print_ins_and_outs( wire_around_succ_box );
    auto ws = compile( wire_around_succ_box );
    std::cout << ws(1337) << std::endl;
-
+*/
 }
