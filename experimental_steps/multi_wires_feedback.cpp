@@ -447,6 +447,7 @@ namespace transforms
    };
 
 
+         struct bottom_type {};
    struct feedback : callable_decltype
    {
       template < typename Expr , typename Input , typename Delay >
@@ -456,13 +457,16 @@ namespace transforms
          
          auto& s = std::get<0>(delay);
 
-         struct bottom_type {};
 
          auto aligned_input = std::tuple_cat( repeat_t<output_arity_t<Expr>::value, bottom_type>{} , input );
+         //std::cout << "--- feedback in  : " << type_name( input ) << std::endl;
+         //std::cout << "--- feedback stte: " << type_name( s ) << std::endl;
+         //std::cout << "--- feedback alin: " << type_name( aligned_input ) << std::endl;
          auto result =
             flatten_tuple( std::make_tuple(
                e( x, 0, ( current_input = aligned_input , delayed_input = boost::ref(s) ))
             ));
+
 
          tuple_for_each( rotate_push_back, s, std::tuple_cat( result, input) );
          using size = std::tuple_size<decltype(result)>;
@@ -634,54 +638,45 @@ const proto::terminal< placeholder< mpl::int_<5> >>::type   _5  = {{}};
 const proto::terminal< placeholder< mpl::int_<6> >>::type   _6  = {{}};
 
 
-int main()
+
+
+
+auto print_ins_and_outs = []( auto const & expr )
 {
-   auto print_ins_and_outs = []( auto const & expr )
-   {
-       std::cout << "-------------------------" << std::endl;
-       //proto::display_expr( expr );
-       std::cout << "#ins:  " << input_arity{} (expr) << std::endl;
-       std::cout << "#outs: " << output_arity{}(expr) << std::endl;
-       std::cout << std::endl;
-   };
-
-   std::cout << "feedback ---------------" << std::endl;
-   auto z1 = _1[_1];
-   auto z2 = _1[_2];
-   auto fb_expr = proto::deep_copy(   ~(0.9f*_1[_1] - 0.8f*_1[_2] + _2)
-                  //|=  ~(0.9*z1 - 0.8*z2 + _2)
-                  //|=  ~(0.9*z1 - 0.8*z2 + _2)
-                  //|=  ~(0.9*z1 - 0.8*z2 + _2)
-                  );
-   //auto fb_expr = ( ~(_1[_1] - _1[_2] + _2)  );
-   //auto fb_expr = ( ~~(_1[_1]+_2[_1]+_3) );
-   //auto fb_expr = ( ~_2 );
-   auto fb = compile( fb_expr );
-   asm volatile("nop");
-   auto sum = std::get<0>(fb(1.f));
-   for ( size_t n = 0; n < 100; ++n )  sum += std::get<0>(fb(.0f));
-   asm volatile("nop");
-   std::cout << sum << std::endl;
-   //print_ins_and_outs( fb_expr );
-   //proto::display_expr( fb_expr );
-   //std::cout << "b: " << input_delays{}( fb_expr ) << std::endl;
-   //std::cout << "b: " << b( fb_expr ) << std::endl;
-   //std::cout << fb(1.f) << std::endl;
-   //std::cout << fb(0.f) << std::endl;
-   //std::cout << fb(0.f) << std::endl;
-   //std::cout << fb(0.f) << std::endl;
-   //std::cout << fb(0.f) << std::endl;
-   //std::cout << fb(0.f) << std::endl;
-   //std::cout << fb(0.f) << std::endl;
-   //std::cout << fb(0.f) << std::endl;
-   //std::cout << fb(0.f) << std::endl;
-   //std::cout << fb(0.f) << std::endl;
-   //std::cout << fb(0.f) << std::endl;
-   //std::cout << fb(0.f) << std::endl;
+    std::cout << "-------------------------" << std::endl;
+    //proto::display_expr( expr );
+    std::cout << "#ins:  " << input_arity{} (expr) << std::endl;
+    std::cout << "#outs: " << output_arity{}(expr) << std::endl;
+    std::cout << std::endl;
+};
 
 
-//   print_ins_and_outs( ( ~( (_2,_3,_1,_4)  |=  (.9f*_1+_2) | (-.1f*_1+_2)) ));
-/*
+
+auto one_quad = []
+{
+   return compile( proto::deep_copy( ~(0.9f*_1[_1] - 0.8f*_1[_2] + _2 ) ));
+};
+
+auto one_quad_chain = []
+{
+   return compile( proto::deep_copy(
+      ~(0.9f*_1[_1] - 0.8f*_1[_2] + _2)
+   |= ~(0.9f*_1[_1] - 0.8f*_1[_2] + _2)
+   |= ~(0.9f*_1[_1] - 0.8f*_1[_2] + _2)
+   |= ~(0.9f*_1[_1] - 0.8f*_1[_2] + _2)
+   ));
+};
+
+auto cross_wire = []
+{
+   return ( proto::deep_copy(
+      ~( (_1[_1],_2[_1])  |= (_2,_3,_1,_4)  |=  (.9f*_1 + _2) | (-.1f*_1 + _2) )
+   ));
+};
+
+
+auto test_wire_around_box = []
+{
    auto wire_around_prev_box = (_1 |= _2);
    print_ins_and_outs( wire_around_prev_box );
    auto wp = compile( wire_around_prev_box );
@@ -691,5 +686,34 @@ int main()
    print_ins_and_outs( wire_around_succ_box );
    auto ws = compile( wire_around_succ_box );
    std::cout << ws(1337) << std::endl;
-*/
+};
+
+
+
+auto make_simple_asm_inspectable_code = []( auto proc )
+{
+   asm volatile("nop");
+   auto sum = std::get<0>(proc(1.f));
+   for ( size_t n = 0; n < 100; ++n )  sum += std::get<0>(proc(.0f));
+   asm volatile("nop");
+   std::cout << sum << std::endl;
+};
+
+auto feed_dirac = []( auto proc )
+{
+   std::cout << proc(1.f) << std::endl;
+   for ( size_t n = 0; n < 100; ++n )
+      std::cout << proc(0.f) << std::endl;
+};
+
+
+int main()
+{
+   make_simple_asm_inspectable_code( one_quad() );
+
+   compile( cross_wire() )(1.f,1.f);
+
+   // TODO does not work yet
+   // auto fb = compile( ~~(_1[_1] + _2[_1] + _3) );
+   // fb(3);
 }
