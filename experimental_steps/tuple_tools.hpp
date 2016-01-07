@@ -71,6 +71,46 @@ auto flatten_tuple( Tuple&& t )
 
 
 
+//  ------------------------------------------------------------------------------------------------
+// tuple_take -- (compile-time) take for tuples
+//  ------------------------------------------------------------------------------------------------
+
+namespace detail {
+
+   template< typename Tuple, std::size_t... Ns >
+   auto tuple_take_impl( Tuple&& t , std::index_sequence<Ns...> )
+   {
+      return std::make_tuple( std::get<Ns>(t)... );
+   }
+
+   template< typename Tuple, std::size_t... Ns >
+   auto tuple_take_impl( Tuple& t , std::index_sequence<Ns...> )
+   {
+      return std::tie( std::get<Ns>(t)... );
+   }
+
+   template< size_t N , typename Tuple , typename
+           = std::enable_if_t<std::tuple_size<std::decay_t<Tuple>>::value >= N> >
+   auto tuple_take( Tuple&& t , int )
+   {
+      return tuple_take_impl( std::forward<Tuple>(t), std::make_index_sequence<N>{} );
+   }
+
+   template< size_t N , typename Tuple >
+   auto tuple_take( Tuple&& t, char )
+   {
+      return std::forward<Tuple>(t);
+   }
+
+}
+
+
+template< size_t N , typename Tuple >
+auto tuple_take( Tuple&& t )
+{
+   return detail::tuple_take<N>( std::forward<Tuple>(t) , 0 );
+}
+
 
 //  ------------------------------------------------------------------------------------------------
 // tuple_drop -- (compile-time) drop for tuples
@@ -229,24 +269,21 @@ auto scan( std::tuple<Ts...> const & t , X x , F&& f )
 // deep_tie -- 
 //  ------------------------------------------------------------------------------------------------
 
-template < typename T >
-auto deep_tie( T& t ) { return t; }
-
-template < typename... Ts >
-auto deep_tie( std::tuple<Ts...>& t );
 
 template < std::size_t... Ns, typename... Ts >
-auto deep_tie( std::index_sequence<Ns...>, std::tuple<Ts...>& t )
+auto deep_tie_impl( std::index_sequence<Ns...>, std::tuple<Ts...>& t )
 {
-   return  std::tie( deep_tie(std::get<Ns>(t))... );
+   return  std::tie( std::get<Ns>(t)... );
 }
 
 template < typename... Ts >
 auto deep_tie( std::tuple<Ts...>& t )
 {
-   return deep_tie( std::make_index_sequence< sizeof...(Ts) >() , t );
+   return deep_tie_impl( std::make_index_sequence< sizeof...(Ts) >() , t );
 }
 
+template < typename T >
+auto deep_tie( T& t ) { return t; }
 
 //  ------------------------------------------------------------------------------------------------
 // print(tuple) -- debug

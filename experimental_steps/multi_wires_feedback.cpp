@@ -14,6 +14,8 @@
 #include <boost/proto/transform.hpp>
 #include <boost/proto/debug.hpp>
 
+#include <boost/algorithm/string/erase.hpp>
+
 #include "callable_decltype.hpp"
 #include "tuple_tools.hpp"
 #include "demangle.h"
@@ -21,6 +23,16 @@
 
 namespace mpl = boost::mpl;
 namespace proto = boost::proto;
+
+
+template< typename S >
+void print_state( S const & s)
+{
+   auto s_name = type_name(s);
+   boost::erase_all( s_name, "std::__1::" );
+   boost::erase_all( s_name, "mpl_::" );
+   std::cout << s_name << std::endl;
+}
 
 
 namespace building_blocks
@@ -262,6 +274,15 @@ namespace transforms
       }
    };
 
+   struct tuple_take_ : callable_decltype
+   {
+      template< typename Drop , typename Tuple >
+      decltype(auto) operator()( Drop , Tuple const & t ) const
+      {
+         return tuple_take<Drop::value>(t);
+      }
+   };
+
    struct tuple_drop_ : callable_decltype
    {
       template< typename Drop , typename Tuple >
@@ -326,17 +347,31 @@ namespace transforms
       <  when
          <  feedback_operator
          ,  make_tuple_fn
-            (  apply( _child , StateCtor(input_delays( _child  )) )
+            (  StateCtor
+               (  tuple_take_
+                  ( output_arity(_child)
+                  , input_delays(_child)
+                  )
+               )
+            ,  apply( _child  )
             )
          >
       ,  when
          <  sequence_operator
          ,  make_tuple_fn
-            (  apply( _left  , StateCtor(input_delays( _left  )) )
-            ,  apply( _right , StateCtor(input_delays( _right )) )
+            (  StateCtor(input_delays( _right  ))
+            ,  apply( _left  )
+            ,  apply( _right )
             )
          >
-      ,  otherwise< _state >
+      ,  when
+         <  parallel_operator
+         ,  make_tuple_fn
+            (  apply( _left  )
+            ,  apply( _right )
+            )
+         >
+      ,  otherwise< std::tuple<>() >
       >
       {};
    };
@@ -410,65 +445,65 @@ namespace transforms
       template < typename I , typename J , typename Delayed_input >
       auto operator()( placeholder<I> , placeholder<J> , in_t<Delayed_input> del_in ) const
       {
-         auto const & s = std::get<I::value-1>(del_in);
+         auto const & s = std::get<I::value-1>(std::get<0>(del_in));
          return s[s.size()-J::value];
       }
    };
 
    struct sequence : callable_decltype
    {
-      template < typename LeftExpr , typename RightExpr , typename Input , typename Delay >
-      auto operator()( in_t<LeftExpr> l , in_t<RightExpr> r , in_t<Input> input , Delay& delay ) const
+      template < typename LeftExpr , typename RightExpr , typename Input , typename State >
+      auto operator()( in_t<LeftExpr> l , in_t<RightExpr> r , in_t<Input> input , State state ) const
       {
-         auto e = eval_it{};
+         eval_it  e;
 
-         auto& ls = std::get<0>(delay);
-         auto& rs = std::get<1>(delay);
+         auto in_state    = std::get<0>(state);
+         auto node_state  = std::get<0>(std::get<1>(state));
+         auto& left_state  = std::get<1>(std::get<1>(state));
+         auto& right_state = std::get<2>(std::get<1>(state));
 
          auto left_result =
             flatten_tuple( std::make_tuple(
-               e( l, 0, ( current_input = input , delayed_input = boost::ref(ls) ))
+               e( l, 0, ( current_input = tuple_take<input_arity_t<LeftExpr>::value>(input) , delayed_input = std::tie(in_state,left_state) ))
             ));
 
-         tuple_for_each( rotate_push_back, ls, input );
          using left_size = std::tuple_size<decltype(left_result)>;
          auto right_input = tuple_cat( left_result, tuple_drop<left_size::value>(input) );
 
-
          auto right_result =
             flatten_tuple( std::make_tuple(
-               e( r, 0, ( current_input = right_input , delayed_input = boost::ref(rs)) )
+               e( r, 0, ( current_input = right_input , delayed_input = std::tie(node_state,right_state) ))
             ));
 
-         tuple_for_each( rotate_push_back, rs, left_result );
+         tuple_for_each( rotate_push_back, node_state, left_result );
          using right_size = std::tuple_size<decltype(right_result)>;
          return tuple_cat( right_result, tuple_drop<right_size::value>(std::move(left_result)) );
       }
    };
 
 
-         struct bottom_type {};
+   struct bottom_type {};
+
    struct feedback : callable_decltype
    {
-      template < typename Expr , typename Input , typename Delay >
-      auto operator()( in_t<Expr> x , in_t<Input> input , Delay& delay ) const
+      template < typename Expr , typename Input , typename State >
+      auto operator()( in_t<Expr> x , in_t<Input> input , State state ) const
       {
-         auto e = eval_it{};
-         
-         auto& s = std::get<0>(delay);
+         eval_it  e;
 
+         auto in_state    = deep_tie(std::get<0>(state));
+         auto node_state  = deep_tie(std::get<0>(std::get<1>(state)));
+         auto child_state = deep_tie(std::get<1>(std::get<1>(state)));
+         auto next_state  = std::tuple_cat( node_state, in_state );
 
          auto aligned_input = std::tuple_cat( repeat_t<output_arity_t<Expr>::value, bottom_type>{} , input );
-         //std::cout << "--- feedback in  : " << type_name( input ) << std::endl;
-         //std::cout << "--- feedback stte: " << type_name( s ) << std::endl;
-         //std::cout << "--- feedback alin: " << type_name( aligned_input ) << std::endl;
          auto result =
             flatten_tuple( std::make_tuple(
-               e( x, 0, ( current_input = aligned_input , delayed_input = boost::ref(s) ))
+               e( x, 0, ( current_input = aligned_input , delayed_input = std::tie(next_state,child_state) ))
             ));
 
 
-         tuple_for_each( rotate_push_back, s, std::tuple_cat( result, input) );
+         tuple_for_each( rotate_push_back, node_state, std::tuple_cat( result, input) );
          using size = std::tuple_size<decltype(result)>;
          return tuple_cat( result, tuple_drop<size::value>(input) );
       }
@@ -477,17 +512,27 @@ namespace transforms
 
    struct parallel : callable_decltype
    {
-      template < typename LeftExpr , typename RightExpr , typename Input , typename Delay >
-      auto operator()( in_t<LeftExpr> l , in_t<RightExpr> r , in_t<Input> input , Delay& del ) const
+      template < typename LeftExpr , typename RightExpr , typename Input , typename State >
+      auto operator()( in_t<LeftExpr> l , in_t<RightExpr> r , in_t<Input> input , State state ) const
       {
-         auto e = eval_it{};
-         auto left_state  = ( current_input = input , delayed_input = del );
-         auto right_state = ( current_input = tuple_drop<input_arity_t<LeftExpr>::value>(input)
-                            , delayed_input = tuple_drop<input_arity_t<LeftExpr>::value>(del)
-                            );
+         eval_it  e;
+
+         auto in_state    = deep_tie(std::get<0>(state));
+         auto left_state  = deep_tie(std::get<0>(std::get<1>(state)));
+         auto right_state = deep_tie(std::get<1>(std::get<1>(state)));
+
+         auto in_state_l = tuple_take<input_arity_t<LeftExpr>::value>(in_state);
+         auto left_state_  = ( current_input = tuple_take<input_arity_t<LeftExpr>::value>(input)
+                             , delayed_input = std::tie(in_state_l,left_state)
+                             );
+
+         auto in_state_r = tuple_drop<input_arity_t<LeftExpr>::value>(in_state);
+         auto right_state_ = ( current_input = tuple_drop<input_arity_t<LeftExpr>::value>(input)
+                             , delayed_input = std::tie(in_state_r,right_state)
+                             );
          return std::make_tuple
-                (  e( l, 0, left_state )
-                ,  e( r, 0, right_state )
+                (  e( l, 0, left_state_ )
+                ,  e( r, 0, right_state_ )
                 );
       }
    };
@@ -583,7 +628,10 @@ private:
    template < typename... Args >
    auto call_impl( mpl::int_<0> , Args const &... args ) -> decltype(auto)
    {
-      auto result = eval_it{}( expr_, 0, ( current_input = std::make_tuple(args...) , delayed_input = boost::ref(state_) ) );
+      std::tuple<> in_state;
+      auto in_tuple = std::tie(in_state,state_);
+      auto result = eval_it{}( expr_, 0, ( current_input = std::make_tuple(args...)
+                                         , delayed_input = boost::ref(in_tuple) ) );
       return flatten_tuple( std::make_tuple( result ));
    }
 
@@ -602,9 +650,9 @@ public:
 
    stateful_lambda( Expression expr ) : expr_( expr )
    {
-      std::cout << "• size expr:  " << sizeof(expr_)  << std::endl;
-      std::cout << "• size state: " << sizeof(state_) << std::endl;
-      std::cout << "• state: " << type_name(state_) << std::endl;
+      //std::cout << "• size expr:  " << sizeof(expr_)  << std::endl;
+      //std::cout << "• size state: " << sizeof(state_) << std::endl;
+      //std::cout << "• state: " << type_name(state_) << std::endl;
    }
 
    template < typename... Args , typename = std::enable_if_t< sizeof...(Args) <= arity > >
@@ -662,21 +710,22 @@ auto one_quad_chain = []
    return compile( proto::deep_copy(
       ~(0.9f*_1[_1] - 0.8f*_1[_2] + _2)
    |= ~(0.9f*_1[_1] - 0.8f*_1[_2] + _2)
-   |= ~(0.9f*_1[_1] - 0.8f*_1[_2] + _2)
-   |= ~(0.9f*_1[_1] - 0.8f*_1[_2] + _2)
+   //|= ~(0.9f*_1[_1] - 0.8f*_1[_2] + _2)
+   //|= ~(0.9f*_1[_1] - 0.8f*_1[_2] + _2)
    ));
 };
 
 auto cross_wire = []
 {
-   return ( proto::deep_copy(
-      ~( (_1[_1],_2[_1])  |= (_2,_3,_1,_4)  |=  (.9f*_1 + _2) | (-.1f*_1 + _2) )
+   return compile( proto::deep_copy(
+      ~( (_2[_1],_3,_1[_1])  |=  (.9f*_1 + _2) | (.2f*_1) )
    ));
 };
 
 
 auto test_wire_around_box = []
 {
+   /*
    auto wire_around_prev_box = (_1 |= _2);
    print_ins_and_outs( wire_around_prev_box );
    auto wp = compile( wire_around_prev_box );
@@ -686,9 +735,17 @@ auto test_wire_around_box = []
    print_ins_and_outs( wire_around_succ_box );
    auto ws = compile( wire_around_succ_box );
    std::cout << ws(1337) << std::endl;
+   */
 };
 
 
+auto sum_dirac = []( auto& proc )
+{
+   auto sum = std::get<0>(proc(1.f));
+   for ( size_t n = 0; n < 100; ++n )
+      sum += std::get<0>(proc(.0f));
+   return sum;
+};
 
 auto make_simple_asm_inspectable_code = []( auto proc )
 {
@@ -707,13 +764,103 @@ auto feed_dirac = []( auto proc )
 };
 
 
+
+auto x_wire = [ u1 = 0.f , u2 = 0.f ](float x) mutable
+{
+   auto u1_ = .9f * u2 + x;
+   auto u2_ = .2f * u1;
+   u1 = u1_;
+   u2 = u2_;
+   return std::make_tuple(u1,u2);
+};
+
+
+
+
+#include <benchmark/benchmark.h>
+
+
+inline void escape(void* p) { asm volatile( "" :: "g"(p) : "memory" ); }
+
+
+static void BM_cross_wire(benchmark::State& state)
+{
+   float x;
+   auto f = cross_wire();
+   while (state.KeepRunning())
+   {
+      escape(&x);
+      asm volatile("nop");
+      x = sum_dirac(f);
+      asm volatile("nop");
+   }
+}
+BENCHMARK(BM_cross_wire);
+
+
+static void BM_x_wire(benchmark::State& state)
+{
+   float x;
+   auto f = x_wire;
+   while (state.KeepRunning())
+   {
+      escape(&x);
+      asm volatile("nop");
+      asm volatile("nop");
+      x = sum_dirac(f);
+      asm volatile("nop");
+   }
+}
+BENCHMARK(BM_x_wire);
+
+
+//BENCHMARK_MAIN();
+
+
+
+
+
 int main()
 {
-   make_simple_asm_inspectable_code( one_quad() );
+   make_simple_asm_inspectable_code( cross_wire() );
+   print_range( cross_wire() );
 
-   compile( cross_wire() )(1.f,1.f);
+
+   input_delays  d;
+   build_state<> b;
+
+   //auto e = (_1 |= _1[_1]) |= (_1 |= _1[_1]);
+   auto e = (_1,_1) |= (_1[_1]|_1) |= _1+_2*0;
+   auto id = compile( e );
+   std::cout << " ------ e ------" << std::endl;
+   std::cout << id(1337) << std::endl;
+   std::cout << id(42) << std::endl;
+   std::cout << id(1) << std::endl;
+   std::cout << id(1) << std::endl;
+   std::cout << id(1) << std::endl;
+
+   std::cout << d(e) << std::endl;
+   std::cout << b(e) << std::endl;
+   print_state( b( e ));
+
+   //print_state( b( cross_wire() ));
+   //compile( cross_wire() )(1.f,1.f);
+
+
+//   std::cout << "--------------" << std::endl;
+//
+//   // TODO build state only for used wires in feedback!
+//
+//   std::cout << b( ~(_1[_1] + _2[_1] + _3[_3]) ) << std::endl;
+//   std::cout << d( ~(_1[_1] + _2[_1] + _3[_3]) ) << std::endl;
+
 
    // TODO does not work yet
-   // auto fb = compile( ~~(_1[_1] + _2[_1] + _3) );
-   // fb(3);
+   auto fb = compile( ~~(_1[_1] + _2[_1] + _3) );
+   //std::cout << d( ~~(_1[_1] + _2[_1] + _3) ) << std::endl;
+   //std::cout << b( ~~(_1[_1] + _2[_1] + _3) ) << std::endl;
+   std::cout << fb(2) << std::endl;
+   std::cout << fb(1) << std::endl;
+   std::cout << fb(0) << std::endl;
+
 }
