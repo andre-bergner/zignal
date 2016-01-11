@@ -19,17 +19,14 @@ namespace biquad
              , a2 =  0.8
              ;
 
-   auto fwd  =  (b0 * _1  +  b1 * _1[_1]  +  b2 * _1[_2] );
-   auto bwd  = ~(     _2  +  a1 * _1[_1]  +  a2 * _1[_2] );
+   auto fwd  = proto::deep_copy(  (b0 * _1  +  b1 * _1[_1]  +  b2 * _1[_2] ) );
+   auto bwd  = proto::deep_copy( ~(     _2  +  a1 * _1[_1]  +  a2 * _1[_2] ) );
 
    namespace direct_form_1
    {
       auto make_flow = []
       {
-         auto fwd  =  (b0 * _1  +  b1 * _1[_1]  +  b2 * _1[_2] );
-         auto bwd  = ~(     _2  +  a1 * _1[_1]  +  a2 * _1[_2] );
-         return compile( proto::deep_copy( _1 |= fwd |= bwd ));
-         //return compile( proto::deep_copy( _1 |= fwd |= bwd |= fwd |= bwd ));
+         return compile( fwd |= bwd );
       };
 
       auto make_custom = []
@@ -59,9 +56,7 @@ namespace biquad
    {
       auto make_flow = []
       {
-         auto fwd  =  (b0 * _1  +  b1 * _1[_1]  +  b2 * _1[_2] );
-         auto bwd  = ~(     _2  +  a1 * _1[_1]  +  a2 * _1[_2] );
-         return compile( proto::deep_copy( bwd |= fwd ));
+         return compile( bwd |= fwd );
       };
 
       auto make_custom = []
@@ -93,8 +88,8 @@ auto sum_dirac = []( auto& proc )
 //    BENCHMARKS
 //     ---------------------------------------------------------------------------------------------
 
-
-inline void escape(void* p) { asm volatile( "" :: "g"(p) : "memory" ); }
+template < typename T >
+inline void escape(T& p) { asm volatile( "" :: "g"(&p) : "memory" ); }
 
 
 static void biquad_direct_form_1_flowz(benchmark::State& s)
@@ -103,7 +98,7 @@ static void biquad_direct_form_1_flowz(benchmark::State& s)
    auto f = biquad::direct_form_1::make_flow();
    while (s.KeepRunning())
    {
-      escape(&x);
+      escape(x);
       // escape(&f);
       x = sum_dirac(f);
    }
@@ -117,7 +112,7 @@ static void biquad_direct_form_1_custom(benchmark::State& s)
    auto f = biquad::direct_form_1::make_custom();
    while (s.KeepRunning())
    {
-      escape(&x);
+      escape(x);
       // escape(&f);
       x = sum_dirac(f);
    }
@@ -131,7 +126,7 @@ static void biquad_direct_form_2_flowz(benchmark::State& s)
    auto f = biquad::direct_form_2::make_flow();
    while (s.KeepRunning())
    {
-      escape(&x);
+      escape(x);
       // escape(&f);
       x = sum_dirac(f);
    }
@@ -145,7 +140,7 @@ static void biquad_direct_form_2_custom(benchmark::State& s)
    auto f = biquad::direct_form_2::make_custom();
    while (s.KeepRunning())
    {
-      escape(&x);
+      escape(x);
       // escape(&f);
       x = sum_dirac(f);
    }

@@ -303,7 +303,7 @@ namespace transforms
       >
    ,  when
       <  terminal<_>
-      ,  std::tuple<>()//delay_per_wire()
+      ,  std::tuple<>()
       >
    ,  when
       <  feedback_operator
@@ -613,6 +613,7 @@ struct to_array_tuple
 //              • returns clojure
 //  ------------------------------------------------------------------------------------------------
 
+
 template
 <  typename Expression
 ,  typename State
@@ -664,13 +665,32 @@ public:
    }
 };
 
-
-// TODO template input type determinse state type (float)
-auto compile = []( auto expr_ )        // TODO need to define value_type for state
+template < int N >
+auto make_placeholder()
 {
-   auto expr = proto::deep_copy(expr_);
+   return typename proto::terminal< placeholder< mpl::int_<N> >>::type{{}};
+}
+
+template < std::size_t N >
+auto make_front()
+{
+   return ( make_placeholder<N-1>() , make_placeholder<N>() );
+}
+
+template <>
+auto make_front<1>()
+{
+   return make_placeholder<1>();
+}
+
+
+auto compile = []( auto expr_ )
+{
+   using arity_t = input_arity_t<decltype(expr_)>;
+   auto front_expr = make_front<arity_t::value>();
+
+   auto expr = proto::deep_copy( front_expr |= expr_ );
    using expr_t = decltype(expr);
-   using arity_t = input_arity_t<expr_t>;
 
    auto builder = build_state< to_array_tuple<float>::apply >{};
    using state_t = decltype( builder(expr) );
