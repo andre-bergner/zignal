@@ -5,7 +5,7 @@
 
 #include <benchmark/benchmark.h>
 
-#include <boost/flowz/flowz.hpp>
+#include <flowz/flowz.hpp>
 
 
 
