@@ -3,6 +3,8 @@
 //     (See accompanying file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //      --------------------------------------------------------------------------------------------
 
+#pragma once
+
 #include <iostream>
 #include <array>
 
@@ -21,18 +23,15 @@
 #include "demangle.h"
 
 
+
+namespace flowz
+{
+
+
+
 namespace mpl = boost::mpl;
 namespace proto = boost::proto;
 
-
-template< typename S >
-void print_state( S const & s)
-{
-   auto s_name = type_name(s);
-   boost::erase_all( s_name, "std::__1::" );
-   boost::erase_all( s_name, "mpl_::" );
-   std::cout << s_name << std::endl;
-}
 
 
 namespace building_blocks
@@ -295,7 +294,7 @@ namespace transforms
    struct input_delays : or_
    <  when
       <  delayed_placeholder<>
-      ,  delay_per_wire( _value(_left),_value(_right))
+      ,  delay_per_wire( _value(_left) , _value(_right) )
       >
    ,  when
       <  terminal< placeholder<_> >
@@ -458,7 +457,7 @@ namespace transforms
          eval_it  e;
 
          auto in_state    = std::get<0>(state);
-         auto node_state  = std::get<0>(std::get<1>(state));
+         auto& node_state  = std::get<0>(std::get<1>(state));
          auto& left_state  = std::get<1>(std::get<1>(state));
          auto& right_state = std::get<2>(std::get<1>(state));
 
@@ -477,7 +476,7 @@ namespace transforms
 
          tuple_for_each( rotate_push_back, node_state, left_result );
          using right_size = std::tuple_size<decltype(right_result)>;
-         return tuple_cat( right_result, tuple_drop<right_size::value>(std::move(left_result)) );
+         return tuple_cat( right_result, tuple_drop<left_size::value + right_size::value>(std::move(left_result)) );
       }
    };
 
@@ -672,13 +671,13 @@ auto make_placeholder()
 }
 
 template < std::size_t N >
-auto make_front()
+inline auto make_front()
 {
    return ( make_placeholder<N-1>() , make_placeholder<N>() );
 }
 
 template <>
-auto make_front<1>()
+inline auto make_front<1>()
 {
    return make_placeholder<1>();
 }
@@ -687,7 +686,7 @@ auto make_front<1>()
 auto compile = []( auto expr_ )
 {
    using arity_t = input_arity_t<decltype(expr_)>;
-   auto front_expr = make_front<arity_t::value>();
+   auto front_expr = make_front<arity_t::value>(); // handles input delays of expr
 
    auto expr = proto::deep_copy( front_expr |= expr_ );
    using expr_t = decltype(expr);
@@ -699,11 +698,13 @@ auto compile = []( auto expr_ )
 };
 
 
-
 const proto::terminal< placeholder< mpl::int_<1> >>::type   _1  = {{}};
 const proto::terminal< placeholder< mpl::int_<2> >>::type   _2  = {{}};
 const proto::terminal< placeholder< mpl::int_<3> >>::type   _3  = {{}};
 const proto::terminal< placeholder< mpl::int_<4> >>::type   _4  = {{}};
 const proto::terminal< placeholder< mpl::int_<5> >>::type   _5  = {{}};
 const proto::terminal< placeholder< mpl::int_<6> >>::type   _6  = {{}};
+
+
+}  // flowz
 

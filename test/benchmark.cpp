@@ -3,14 +3,17 @@
 //     (See accompanying file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //      --------------------------------------------------------------------------------------------
 
+#include <benchmark/benchmark.h>
+
 #include <boost/flowz/flowz.hpp>
 
-#include <benchmark/benchmark.h>
+
 
 
 
 namespace biquad
 {
+   using namespace flowz;
 
    const float b0 =  0.2
              , b1 = -0.3
@@ -74,11 +77,21 @@ namespace biquad
    }
 }
 
+
+
+template < typename T >
+inline void escape(T& p) { asm volatile( "" :: "g"(&p) : "memory" ); }
+
+
 auto sum_dirac = []( auto& proc )
 {
    auto sum = std::get<0>(proc(1.f));
    for ( size_t n = 0; n < 100; ++n )
+   {
+      escape(proc);
       sum += std::get<0>(proc(.0f));
+      sum += std::get<0>(proc(.0f));
+   }
    return sum;
 };
 
@@ -88,8 +101,6 @@ auto sum_dirac = []( auto& proc )
 //    BENCHMARKS
 //     ---------------------------------------------------------------------------------------------
 
-template < typename T >
-inline void escape(T& p) { asm volatile( "" :: "g"(&p) : "memory" ); }
 
 
 static void biquad_direct_form_1_flowz(benchmark::State& s)
@@ -99,7 +110,6 @@ static void biquad_direct_form_1_flowz(benchmark::State& s)
    while (s.KeepRunning())
    {
       escape(x);
-      // escape(&f);
       x = sum_dirac(f);
    }
 }
@@ -113,7 +123,6 @@ static void biquad_direct_form_1_custom(benchmark::State& s)
    while (s.KeepRunning())
    {
       escape(x);
-      // escape(&f);
       x = sum_dirac(f);
    }
 }
@@ -127,7 +136,6 @@ static void biquad_direct_form_2_flowz(benchmark::State& s)
    while (s.KeepRunning())
    {
       escape(x);
-      // escape(&f);
       x = sum_dirac(f);
    }
 }
@@ -141,7 +149,6 @@ static void biquad_direct_form_2_custom(benchmark::State& s)
    while (s.KeepRunning())
    {
       escape(x);
-      // escape(&f);
       x = sum_dirac(f);
    }
 }
