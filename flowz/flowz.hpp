@@ -55,6 +55,11 @@ namespace building_blocks
    using parallel_operator = bitwise_or         < _ , _ >;
    using sequence_operator = bitwise_or_assign  < _ , _ >;
    using feedback_operator = complement         < _ >;
+
+   // private nodes
+
+   struct binary_feedback_tag {};
+   using binary_feedback_operator = binary_expr< binary_feedback_tag , _ , _ >;
 }
 
 using building_blocks :: placeholder;
@@ -65,6 +70,7 @@ using building_blocks :: channel_operator;
 using building_blocks :: sequence_operator;
 using building_blocks :: parallel_operator;
 using building_blocks :: feedback_operator;
+using building_blocks :: binary_feedback_operator;
 
 
 BOOST_PROTO_DEFINE_ENV_VAR( current_input_t, current_input );
@@ -192,22 +198,22 @@ namespace transforms
    // state and wire related tuple tools
    // -------------------------------------------------------------------------------------------
 
-   template < typename arity , typename delay = mpl::int_<0> >
+   template < typename arity , typename delay , typename base_other >
    struct make_arity_impl
    {
-      using type = tuple_cat_t< repeat_t< arity::value-1ul, mpl::int_<0> >
+      using type = tuple_cat_t< repeat_t< arity::value-1ul, base_other >
                               , std::tuple<delay>
                               >;
    };
 
-   template < typename delay >
-   struct make_arity_impl<mpl::int_<0>, delay>
+   template < typename delay , typename base_other >
+   struct make_arity_impl<mpl::int_<0>, delay, base_other>
    {
       using type = std::tuple<>;
    };
 
-   template < typename arity , typename delay = mpl::int_<0> >
-   using make_arity = typename make_arity_impl<arity,delay>::type;
+   template < typename arity , typename delay = mpl::int_<0>, typename base_other = mpl::int_<0> >
+   using make_arity = typename make_arity_impl<arity,delay,base_other>::type;
 
 
    struct delay_per_wire : callable_decltype
@@ -220,6 +226,20 @@ namespace transforms
          return make_arity<typename Placeholder::arity, typename Delay::arity>{};
       }
    };
+
+
+   struct delay_per_wire_2 : callable_decltype
+   {
+      using default_t = placeholder<mpl::int_<0>>;
+
+      template < typename Placeholder = default_t , typename Delay = default_t>
+      auto operator()( Placeholder const & = default_t{}, Delay const & = default_t{} ) const
+      {
+         return make_arity<typename Placeholder::arity, typename Delay::arity, mpl::int_<-1>>{};
+      }
+   };
+
+
 
    struct tuple_cat_fn : callable_decltype
    {
@@ -273,6 +293,50 @@ namespace transforms
       }
    };
 
+
+
+
+   template < int n , int m >
+   using map_min = mpl::int_< n == -1 ? m : m == -1 ? n : (n<m)?n:m >;
+   // -1 ,  m  ->  m
+   //  n , -1  ->  n
+   //  n ,  m  ->  min(n,m)
+
+   template < typename Tuple1, typename Tuple2, std::size_t... Ns >
+   auto zip_with_min( Tuple1&& t1, Tuple2&& t2, std::index_sequence<Ns...> )
+   {
+      using namespace std;
+      return tuple< map_min< decay_t<decltype(get<Ns>(t1))>::value , decay_t<decltype(get<Ns>(t2))>::value >... >{};
+   }
+
+   template < typename Tuple1, typename Tuple2 >
+   auto zip_with_min( Tuple1&&, Tuple2&&, std::index_sequence<> )
+   {
+      return std::tuple<>{};
+   }
+
+   struct min_delay_of_wires : callable_decltype
+   {
+      template < typename Tuple_l , typename Tuple_r >
+      auto operator()( Tuple_l&& tl, Tuple_r&& tr ) const
+      {
+         using tuple_tl = std::decay_t<Tuple_l>;
+         using tuple_tr = std::decay_t<Tuple_r>;
+         using min_size = typename mpl::min< mpl::int_<std::tuple_size<tuple_tl>::value>
+                                           , mpl::int_<std::tuple_size<tuple_tr>::value>
+                                           >::type;
+         return  std::tuple_cat(  zip_with_min(tl,tr,std::make_index_sequence<min_size::value>{})
+                               ,  tuple_drop<min_size::value>( std::forward<Tuple_l>(tl) )
+                               ,  tuple_drop<min_size::value>( std::forward<Tuple_r>(tr) )
+                               );
+      }
+   };
+
+
+
+
+
+
    struct tuple_take_ : callable_decltype
    {
       template< typename Drop , typename Tuple >
@@ -291,46 +355,81 @@ namespace transforms
       }
    };
 
-   struct input_delays : or_
-   <  when
-      <  delayed_placeholder<>
-      ,  delay_per_wire( _value(_left) , _value(_right) )
-      >
-   ,  when
-      <  terminal< placeholder<_> >
-      ,  delay_per_wire( _value() )
-      >
-   ,  when
-      <  terminal<_>
-      ,  std::tuple<>()
-      >
-   ,  when
-      <  feedback_operator
-      ,  tuple_drop_
-         (  output_arity(_child)
-         ,  input_delays(_child)
-         )
-      >
-   ,  when
-      <  parallel_operator
-      ,  tuple_cat_fn( input_delays(_left) , input_delays(_right) )
-      >
-   ,  when
-      <  sequence_operator
-      ,  tuple_cat_fn
-         (  input_delays(_left)
+   template < typename Generator , typename Combiner >
+   struct input_delays
+   {
+      struct apply : or_
+      <  when
+         <  delayed_placeholder<>
+         ,  Generator( _value(_left) , _value(_right) )
+         >
+      ,  when
+         <  terminal< placeholder<_> >
+         ,  Generator( _value() )
+         >
+      ,  when
+         <  terminal<_>
+         ,  std::tuple<>()
+         >
+      ,  when
+         <  feedback_operator
          ,  tuple_drop_
-            (  output_arity(_left)
-            ,  input_delays(_right)
+            (  output_arity(_child)
+            ,  apply(_child)
             )
-         )
+         >
+      ,  when
+         <  parallel_operator
+         ,  tuple_cat_fn( apply(_left) , apply(_right) )
+         >
+      ,  when
+         <  sequence_operator
+         ,  tuple_cat_fn
+            (  apply(_left)
+            ,  tuple_drop_
+               (  output_arity(_left)
+               ,  apply(_right)
+               )
+            )
+         >
+      ,  when
+         <  nary_expr<_, vararg<_>>
+         ,  fold<_, std::tuple<>(), Combiner(apply, _state) >
+         >
       >
-   ,  when
-      <  nary_expr<_, vararg<_>>
-      ,  fold<_, std::tuple<>(), max_delay_of_wires(input_delays, _state) >
-      >
+      {};
+   };
+
+
+   using max_input_delays = typename input_delays< delay_per_wire , max_delay_of_wires >::apply;
+   using min_input_delays = typename input_delays< delay_per_wire_2 , min_delay_of_wires >::apply;
+
+   template < typename Expr >
+   using min_input_delays_t = decltype( min_input_delays{}( std::declval<Expr>() ) );
+
+
+
+   template < bool... bs >
+   struct bools {};
+
+   template < typename Tuple , typename T >
+   struct any_of_;
+
+   template < typename... Ts , typename T >
+   struct any_of_< std::tuple<Ts...> , T > : std::integral_constant
+   <  bool
+   ,  !std::is_same
+      <  bools< std::is_same<T , Ts>::value... >
+      ,  bools< !std::is_same<Ts, Ts>::value... >
+      >::value
    >
    {};
+
+
+   template < typename Expr >
+   using needs_direct_input = any_of_< min_input_delays_t<Expr> , mpl::int_<0> >;
+
+
 
 
    struct identity : callable_decltype
@@ -348,8 +447,8 @@ namespace transforms
          ,  make_tuple_fn
             (  StateCtor
                (  tuple_take_
-                  ( output_arity(_child)
-                  , input_delays(_child)
+                  (  output_arity(_child)
+                  ,  max_input_delays(_child)
                   )
                )
             ,  apply( _child  )
@@ -358,7 +457,7 @@ namespace transforms
       ,  when
          <  sequence_operator
          ,  make_tuple_fn
-            (  StateCtor(input_delays( _right  ))
+            (  StateCtor(max_input_delays( _right  ))
             ,  apply( _left  )
             ,  apply( _right )
             )
@@ -429,6 +528,115 @@ namespace transforms
    template < typename T >
    using in_t = T const &;
    //using in_t = T;
+
+   //-----------------------------------------------------------------------------------------------
+
+   // expression-rebuilder
+   // example: a*_1 |= _1 + _2 |= _1[_1]   -->  future_expr: a*_1 |= _1 + _2
+   // second task: put into delay-line
+
+   struct place_the_holder_id;
+   struct check_sequence_input;
+   //struct monadic_default;
+   struct split_off_future_expr_unpack;
+
+   struct split_off_future_expr : or_
+   <  when
+      <  terminal< placeholder<_> >
+      ,  place_the_holder_id( _value )
+      >
+   ,  when
+      <  terminal<_>
+      ,  make_tuple_fn( _value )
+      >
+   ,  when
+      <  sequence_operator
+      ,  check_sequence_input( _left , _right )
+      >
+   ,  when
+      <  _
+      ,  make_tuple_fn( _default< split_off_future_expr_unpack > )
+      >
+   >
+   {};
+
+
+   struct split_off_future_expr_unpack_impl : callable_decltype
+   {
+      template < typename LiftedExpr >
+      auto operator()( in_t<LiftedExpr> x ) const
+      {
+         std::cout << " ----- monadic_default ----- " << std::endl;
+         display_expr(x);
+         split_off_future_expr e;
+         return std::get<0>(e(x));
+      }
+   };
+
+   struct split_off_future_expr_unpack : otherwise< split_off_future_expr_unpack_impl(_) > {};
+
+   struct place_the_holder_id : callable_decltype
+   {
+      template < typename I >
+      auto operator()( placeholder<I> const & ) const
+      {
+         return std::make_tuple( typename proto::terminal<placeholder<I>>::type{} );
+      }
+   };
+
+   // TODO
+   // • in compile: transform expression into new expression w/ binary feedback node
+   // • handle expr w/o future part, e.g. _1[_1] |= _1[_1] -->  (expr,())
+   // • needs_direct_input must be parametrized prev. output arity
+   // • handle parallel combiner, e.g. (_1 |= _1[_1]) | (_1 |= _1[_1]) should work
+   // • handle expr w/o current part, e.g. _1 |= _1 -->  ((),expr) compile error
+
+   struct check_sequence_input : callable_decltype
+   {
+      template < typename LeftExpr , typename RightExpr >
+      auto operator()( in_t<LeftExpr> l , in_t<RightExpr> r ) const
+      {
+         return impl( needs_direct_input<RightExpr>{} , l, r );
+      }
+
+   private:
+
+      template < typename LeftExpr , typename RightExpr >
+      auto impl( std::true_type , in_t<LeftExpr> l , in_t<RightExpr> r ) const
+      {
+         split_off_future_expr  e;
+         auto res_l = e(l);
+
+         return impl2( mpl::int_<std::tuple_size<decltype(res_l)>::value>{} , res_l, r );
+      }
+
+      template < typename LeftExpr , typename RightExpr >
+      auto impl2( mpl::int_<1> , in_t<LeftExpr> l , in_t<RightExpr> r ) const
+      {
+         split_off_future_expr  e;
+         return std::make_tuple( std::get<0>(l) |= std::get<0>(e(r)) );
+      }
+
+      template < typename LeftExpr , typename RightExpr >
+      auto impl2( mpl::int_<2> , in_t<LeftExpr> l , in_t<RightExpr> r ) const
+      {
+         return std::make_tuple( std::get<0>(l) |= r , std::get<1>(l) );
+      }
+
+
+
+      template < typename LeftExpr , typename RightExpr >
+      auto impl( std::false_type , in_t<LeftExpr> l , in_t<RightExpr> r ) const
+      {
+         split_off_future_expr  e;
+         return std::make_tuple( std::get<0>(e(r)) , std::get<0>(e(l)) );
+      }
+
+   };
+
+
+   //-----------------------------------------------------------------------------------------------
+
 
    struct place_the_holder : callable_decltype
    {
@@ -505,6 +713,30 @@ namespace transforms
          tuple_for_each( rotate_push_back, node_state, std::tuple_cat( result, input) );
          using size = std::tuple_size<decltype(result)>;
          return tuple_cat( result, tuple_drop<size::value>(input) );
+         /*
+         auto split_expr   = split_off_future_expr{}(x);
+         auto current_expr = std::get<0>(split_off_future_expr{}(x));
+         auto future_expr  = std::get<1>(split_off_future_expr{}(x));
+         //display_expr(current_expr);
+         //display_expr(future_expr);
+
+
+         auto promise_input = repeat_t<input_arity_t<decltype(current_expr)>::value, bottom_type>{};
+         auto result =
+            flatten_tuple( std::make_tuple(
+               e( x, 0, ( current_input = promise_input , delayed_input = std::tie(next_state,child_state) ))
+            ));
+
+         auto future_input = std::tuple_cat( result , input );
+         auto fut_result =
+            flatten_tuple( std::make_tuple(
+               e( x, 0, ( current_input = future_input , delayed_input = std::tie(next_state,child_state) ))
+            ));
+
+         tuple_for_each( rotate_push_back, node_state, future_input );
+         using size = std::tuple_size<decltype(result)>;
+         return tuple_cat( result, tuple_drop<size::value>(input) );
+         */
       }
    };
 
@@ -540,7 +772,7 @@ namespace transforms
 
 
 using  transforms :: input_arity;
-using  transforms :: input_delays;
+using  transforms :: max_input_delays;
 using  transforms :: build_state;
 using  transforms :: input_arity_t;
 using  transforms :: output_arity;
