@@ -1,13 +1,11 @@
 # todo
 
-* _1[_1] is broken
-
 * benchmarks: unroll1,2,3 , long filter-chain
 
 * analyze memory transfer, play with loop unrolling by 3, ...
 
 
-* ~( _1 |= _1[_1] )   must compile !!!!  pull model?
+* ~( _1 |= _1[_1] )   must compile !  pull model?
   more complicated:  ~( _1 | _1[_1]   |=   _1[_1] | _1 )
   ideas:
   - push vs pull:
@@ -55,7 +53,6 @@
   --> copy all values into tuple-hierachy
   --> treat values similar to state, i.e. pass them in from outside
       and hold expression as mere type
-* add namespaces
 * bug, due to front_state_expr expressions w/o input cannot be compiled.
 * split up into files
 * remove currying
