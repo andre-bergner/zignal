@@ -34,7 +34,7 @@ namespace biquad
 
       auto make_custom = []
       {
-         return [ & , x1 = 0.f , x2 = 0.f , y1 = 0.f , y2 = 0.f ](float x0) mutable
+         return [ = , x1 = 0.f , x2 = 0.f , y1 = 0.f , y2 = 0.f ](float x0) mutable
          {
             auto 
             y0  =  b0 * x0  +  b1 * x1  +  b2 * x2  +  a1 * y1  +  a2 * y2;
@@ -64,7 +64,7 @@ namespace biquad
 
       auto make_custom = []
       {
-         return [ & , u1 = 0.f , u2 = 0.f ](float x0) mutable
+         return [ = , u1 = 0.f , u2 = 0.f ](float x0) mutable
          {
             auto
             u0  =       x0  +  a1 * u1  +  a2 * u2,

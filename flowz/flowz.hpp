@@ -502,6 +502,10 @@ namespace transforms
       <  feedback_operator
       ,  feedback( _child , _env_var<current_input_t> , _env_var<delayed_input_t> )
       >
+   //,  when
+   //   <  binary_feedback_operator
+   //   ,  feedback( _left , _right, _env_var<current_input_t> , _env_var<delayed_input_t> )
+   //   >
    ,  when
       <  sequence_operator
       ,  sequence( _left , _right , _env_var<current_input_t> , _env_var<delayed_input_t> )
@@ -529,107 +533,136 @@ namespace transforms
    using in_t = T const &;
    //using in_t = T;
 
-   //-----------------------------------------------------------------------------------------------
+   //  ---------------------------------------------------------------------------------------------
+   // expression rebuilder -- transforms unary feedback nodes into binary ones
+   //  ---------------------------------------------------------------------------------------------
 
-   // expression-rebuilder
    // example: a*_1 |= _1 + _2 |= _1[_1]   -->  future_expr: a*_1 |= _1 + _2
-   // second task: put into delay-line
 
-   struct place_the_holder_id;
-   struct check_sequence_input;
-   //struct monadic_default;
-   struct split_off_future_expr_unpack;
+   struct split_future_subexpr;
+   struct split_in_sequence_combinator;
+   struct lifted_default;
 
-   struct split_off_future_expr : or_
+   struct unary_to_binary_feedback : or_
    <  when
-      <  terminal< placeholder<_> >
-      ,  place_the_holder_id( _value )
+      <  terminal<_>
+      ,  make_tuple_fn(_)
       >
    ,  when
-      <  terminal<_>
-      ,  make_tuple_fn( _value )
+      <  feedback_operator
+      ,  split_future_subexpr( _child )
       >
    ,  when
       <  sequence_operator
-      ,  check_sequence_input( _left , _right )
+      ,  split_in_sequence_combinator( _left , _right )
       >
    ,  when
       <  _
-      ,  make_tuple_fn( _default< split_off_future_expr_unpack > )
+      ,   lifted_default(_deep_copy(_),_state)
       >
    >
    {};
 
-
-   struct split_off_future_expr_unpack_impl : callable_decltype
+   struct lifted_default : callable_decltype
    {
-      template < typename LiftedExpr >
-      auto operator()( in_t<LiftedExpr> x ) const
+      template< typename Expr , typename State , std::size_t... Ns >
+      auto apply( std::index_sequence<Ns...> , Expr const & x , State const & s ) const
       {
-         std::cout << " ----- monadic_default ----- " << std::endl;
-         display_expr(x);
-         split_off_future_expr e;
-         return std::get<0>(e(x));
+         using  tag = typename tag_of<Expr>::type;
+         unary_to_binary_feedback   e;
+         auto res = std::make_tuple( e(child_c<Ns>(x))... );
+         return std::tuple_cat( std::make_tuple( make_expr<tag>( std::get<0>(std::get<Ns>(res))... ) )
+                              , tail(std::get<0>(res))
+                              );
+      }
+
+      template< typename Expr, typename State >
+      auto operator()( Expr const & e , State const & s ) const
+      {
+         using idx_seq = std::make_index_sequence< proto::arity_of<Expr>::value >;
+         return apply( idx_seq{}, e , s );
       }
    };
 
-   struct split_off_future_expr_unpack : otherwise< split_off_future_expr_unpack_impl(_) > {};
 
-   struct place_the_holder_id : callable_decltype
-   {
-      template < typename I >
-      auto operator()( placeholder<I> const & ) const
-      {
-         return std::make_tuple( typename proto::terminal<placeholder<I>>::type{} );
-      }
-   };
 
    // TODO
    // • in compile: transform expression into new expression w/ binary feedback node
    // • handle expr w/o future part, e.g. _1[_1] |= _1[_1] -->  (expr,())
    // • needs_direct_input must be parametrized prev. output arity
-   // • handle parallel combiner, e.g. (_1 |= _1[_1]) | (_1 |= _1[_1]) should work
+   // • handle parallel combiner, e.g. (_1 |= _1[_1]) | (_1 |= _1[_1]) should work (diff. split point)
    // • handle expr w/o current part, e.g. _1 |= _1 -->  ((),expr) compile error
+   // • nested recursion:
+   //   - idea: trafo1 -> go down and rebuild expr
+   //                   , when in first (i.e. deepest) una_feedback call rebuild-splitter
+   //                   , return this expr
+   //                   , what to do with bin_feeback?
 
-   struct check_sequence_input : callable_decltype
+
+   struct split_future_subexpr : callable_decltype
+   {
+      template < typename Expr >
+      auto operator()( in_t<Expr> x ) const
+      {
+         unary_to_binary_feedback  e;
+         return impl(e(x));
+      }
+
+      template < typename LiftedExpr >
+      auto impl( in_t<LiftedExpr> x ) const
+      {
+         return make_expr<building_blocks::binary_feedback_tag>( std::get<0>(x), std::get<1>(x) );
+      }
+   };
+
+
+   struct split_in_sequence_combinator : callable_decltype
    {
       template < typename LeftExpr , typename RightExpr >
       auto operator()( in_t<LeftExpr> l , in_t<RightExpr> r ) const
       {
-         return impl( needs_direct_input<RightExpr>{} , l, r );
+         unary_to_binary_feedback  e;
+         return impl( e(l), r );
       }
 
    private:
 
-      template < typename LeftExpr , typename RightExpr >
-      auto impl( std::true_type , in_t<LeftExpr> l , in_t<RightExpr> r ) const
+      template < typename LL , typename LR , typename R >
+      auto impl( in_t<std::tuple<LL,LR>> l , in_t<R> r ) const
       {
-         split_off_future_expr  e;
-         auto res_l = e(l);
-
-         return impl2( mpl::int_<std::tuple_size<decltype(res_l)>::value>{} , res_l, r );
+         unary_to_binary_feedback  e;
+         return std::make_tuple( std::get<0>(l), std::get<1>(l) |= r );
       }
 
-      template < typename LeftExpr , typename RightExpr >
-      auto impl2( mpl::int_<1> , in_t<LeftExpr> l , in_t<RightExpr> r ) const
+      template < typename L , typename R >
+      auto impl( in_t<std::tuple<L>> l , in_t<R> r ) const
       {
-         split_off_future_expr  e;
-         return std::make_tuple( std::get<0>(l) |= std::get<0>(e(r)) );
+         return impl2( needs_direct_input<R>{}, l, r );
       }
 
-      template < typename LeftExpr , typename RightExpr >
-      auto impl2( mpl::int_<2> , in_t<LeftExpr> l , in_t<RightExpr> r ) const
+      template < typename L , typename R >
+      auto impl2( std::true_type , in_t<L> l , in_t<R> r ) const
       {
-         return std::make_tuple( std::get<0>(l) |= r , std::get<1>(l) );
+         unary_to_binary_feedback  e;
+         return impl3( l , e(r) );
       }
 
-
-
-      template < typename LeftExpr , typename RightExpr >
-      auto impl( std::false_type , in_t<LeftExpr> l , in_t<RightExpr> r ) const
+      template < typename LeftExpr , typename RL , typename RR >
+      auto impl3( in_t<LeftExpr> l , in_t<std::tuple<RL,RR>> r ) const
       {
-         split_off_future_expr  e;
-         return std::make_tuple( std::get<0>(e(r)) , std::get<0>(e(l)) );
+         return std::make_tuple( std::get<0>(l) |= std::get<0>(r) , std::get<1>(r) );
+      }
+
+      template < typename LeftExpr , typename R >
+      auto impl3( in_t<LeftExpr> l , in_t<std::tuple<R>> r ) const
+      {
+         return std::make_tuple( std::get<0>(l) |= std::get<0>(r) );
+      }
+
+      template < typename L , typename RightExpr >
+      auto impl2( std::false_type , in_t<L> l , in_t<RightExpr> r ) const
+      {
+         return std::make_tuple( std::get<0>(l) , r );
       }
 
    };
@@ -713,12 +746,25 @@ namespace transforms
          tuple_for_each( rotate_push_back, node_state, std::tuple_cat( result, input) );
          using size = std::tuple_size<decltype(result)>;
          return tuple_cat( result, tuple_drop<size::value>(input) );
-         /*
-         auto split_expr   = split_off_future_expr{}(x);
-         auto current_expr = std::get<0>(split_off_future_expr{}(x));
-         auto future_expr  = std::get<1>(split_off_future_expr{}(x));
-         //display_expr(current_expr);
-         //display_expr(future_expr);
+      }
+   };
+
+   /*
+   struct binary_feedback_operator : callable_decltype
+   {
+      template < typename Expr , typename Input , typename State >
+      auto operator()( in_t<LeftExpr> l , in_t<RightExpr> r , in_t<Input> input , State state ) const
+      {
+         eval_it  e;
+
+         auto in_state    = deep_tie(std::get<0>(state));
+         auto node_state  = deep_tie(std::get<0>(std::get<1>(state)));
+         auto child_state = deep_tie(std::get<1>(std::get<1>(state)));
+         auto next_state  = std::tuple_cat( node_state, in_state );
+
+         auto split_expr   = unary_to_binary_feedback{}(x);
+         auto current_expr = std::get<0>(unary_to_binary_feedback{}(x));
+         auto future_expr  = std::get<1>(unary_to_binary_feedback{}(x));
 
 
          auto promise_input = repeat_t<input_arity_t<decltype(current_expr)>::value, bottom_type>{};
@@ -736,10 +782,9 @@ namespace transforms
          tuple_for_each( rotate_push_back, node_state, future_input );
          using size = std::tuple_size<decltype(result)>;
          return tuple_cat( result, tuple_drop<size::value>(input) );
-         */
       }
    };
-
+   */
 
    struct parallel : callable_decltype
    {
@@ -840,8 +885,8 @@ struct to_array_tuple
 
 //  ------------------------------------------------------------------------------------------------
 // compile  --  main function of framework
-//              • takes an expression
-//              • returns clojure
+//  • takes an expression
+//  • returns closure holding the expression and an associated context with state & ceofficients
 //  ------------------------------------------------------------------------------------------------
 
 
