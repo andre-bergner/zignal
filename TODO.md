@@ -1,6 +1,12 @@
 # todo
 
+* unary-to-binary-feedback
+  - handle full delay in first expression, i.e. before first seq-op --> could use make_front
+  - handle nested feedback: idea transform on the way up from the leafs instead of on the way down
+  - handle parallel combiners
+* file proto::lit bug
 * benchmarks: unroll1,2,3 , long filter-chain
+  * document clang vs gcc
 
 * analyze memory transfer, play with loop unrolling by 3, ...
 

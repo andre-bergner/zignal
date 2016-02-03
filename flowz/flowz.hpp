@@ -39,11 +39,40 @@ namespace building_blocks
    using namespace proto;
 
    //  ---------------------------------------------------------------------------------------------
+   // copy_domain -- all flowz expressions should be hold by value to avoid dangling references
+   //  ---------------------------------------------------------------------------------------------
+
+
+   template< typename E >
+   struct copy_expr;
+
+   struct copy_generator : proto::pod_generator< copy_expr > {};
+
+   struct copy_domain : proto::domain< copy_generator >
+   {
+      template < typename T >
+      struct as_child : proto_base_domain::as_expr<T> {};
+   };
+
+   template< typename Expr >
+   struct copy_expr
+   {
+      BOOST_PROTO_EXTENDS( Expr, copy_expr<Expr>, copy_domain )
+   };
+
+
+   //  ---------------------------------------------------------------------------------------------
    // definition of the building blocks of the language
    //  ---------------------------------------------------------------------------------------------
 
    template < typename I >  struct placeholder       { using arity = I; };
    template < typename T >  struct placeholder_arity { using type = typename T::arity; };
+
+   template< int n >
+   auto make_placeholder()
+   {
+      return  make_expr<tag::terminal, copy_domain>( placeholder< mpl::int_<n> >{} );
+   }
 
    template < typename idx = _ >
    using delayed_placeholder = subscript< terminal<placeholder<idx>> , terminal<placeholder<_>> >;
@@ -60,10 +89,15 @@ namespace building_blocks
 
    struct binary_feedback_tag {};
    using binary_feedback_operator = binary_expr< binary_feedback_tag , _ , _ >;
+
+   template < typename LeftExpr , typename RightExpr >
+   auto make_binary_feedback( LeftExpr const & l , RightExpr const & r )
+   {  return make_expr<building_blocks::binary_feedback_tag>( l, r );  }
 }
 
 using building_blocks :: placeholder;
 using building_blocks :: placeholder_arity;
+using building_blocks :: make_placeholder;
 using building_blocks :: delayed_placeholder;
 
 using building_blocks :: channel_operator;
@@ -71,6 +105,7 @@ using building_blocks :: sequence_operator;
 using building_blocks :: parallel_operator;
 using building_blocks :: feedback_operator;
 using building_blocks :: binary_feedback_operator;
+using building_blocks :: make_binary_feedback;
 
 
 BOOST_PROTO_DEFINE_ENV_VAR( current_input_t, current_input );
@@ -429,6 +464,9 @@ namespace transforms
    template < typename Expr >
    using needs_direct_input = any_of_< min_input_delays_t<Expr> , mpl::int_<0> >;
 
+   template < typename Expr , std::size_t N >
+   using needs_num_direct_input = any_of_< tuple_take_t<N,min_input_delays_t<Expr>> , mpl::int_<0> >;
+
 
 
 
@@ -554,11 +592,11 @@ namespace transforms
       >
    ,  when
       <  sequence_operator
-      ,  split_in_sequence_combinator( _left , _right )
+      ,  split_in_sequence_combinator( _left , _right , _state )
       >
    ,  when
       <  _
-      ,   lifted_default(_deep_copy(_),_state)
+      ,   lifted_default( _ , _state )
       >
    >
    {};
@@ -598,53 +636,56 @@ namespace transforms
    //                   , return this expr
    //                   , what to do with bin_feeback?
 
-
    struct split_future_subexpr : callable_decltype
    {
       template < typename Expr >
       auto operator()( in_t<Expr> x ) const
       {
          unary_to_binary_feedback  e;
-         return impl(e(x));
+         auto split_pred = [](auto expr)
+         {
+            using expr_t = decltype(expr);
+            return needs_num_direct_input<expr_t,output_arity_t<expr_t>::value>{};
+         };
+         return impl( e(x, split_pred) );
       }
 
       template < typename LiftedExpr >
       auto impl( in_t<LiftedExpr> x ) const
       {
-         return make_expr<building_blocks::binary_feedback_tag>( std::get<0>(x), std::get<1>(x) );
+         return make_binary_feedback( std::get<0>(x), std::get<1>(x) );
       }
    };
 
 
    struct split_in_sequence_combinator : callable_decltype
    {
-      template < typename LeftExpr , typename RightExpr >
-      auto operator()( in_t<LeftExpr> l , in_t<RightExpr> r ) const
+      template < typename LeftExpr , typename RightExpr , typename State >
+      auto operator()( in_t<LeftExpr> l , in_t<RightExpr> r , State const & s ) const
       {
          unary_to_binary_feedback  e;
-         return impl( e(l), r );
+         return impl( e(l,s), r, s );
       }
 
    private:
 
-      template < typename LL , typename LR , typename R >
-      auto impl( in_t<std::tuple<LL,LR>> l , in_t<R> r ) const
+      template < typename LL , typename LR , typename R , typename Pred >
+      auto impl( in_t<std::tuple<LL,LR>> l , in_t<R> r , in_t<Pred> p ) const
       {
-         unary_to_binary_feedback  e;
-         return std::make_tuple( std::get<0>(l), std::get<1>(l) |= r );
+         return std::make_tuple( std::get<0>(l), std::get<1>(l) |= r, p );
       }
 
-      template < typename L , typename R >
-      auto impl( in_t<std::tuple<L>> l , in_t<R> r ) const
+      template < typename L , typename R , typename Pred >
+      auto impl( in_t<std::tuple<L>> l , in_t<R> r , in_t<Pred> p ) const
       {
-         return impl2( needs_direct_input<R>{}, l, r );
+         return impl2( p(r), l, r, p );
       }
 
-      template < typename L , typename R >
-      auto impl2( std::true_type , in_t<L> l , in_t<R> r ) const
+      template < typename L , typename R , typename P >
+      auto impl2( std::true_type , in_t<L> l , in_t<R> r , in_t<P> p ) const
       {
          unary_to_binary_feedback  e;
-         return impl3( l , e(r) );
+         return impl3( l , e(r,p) );
       }
 
       template < typename LeftExpr , typename RL , typename RR >
@@ -659,8 +700,8 @@ namespace transforms
          return std::make_tuple( std::get<0>(l) |= std::get<0>(r) );
       }
 
-      template < typename L , typename RightExpr >
-      auto impl2( std::false_type , in_t<L> l , in_t<RightExpr> r ) const
+      template < typename L , typename RightExpr , typename P >
+      auto impl2( std::false_type , in_t<L> l , in_t<RightExpr> r , in_t<P> ) const
       {
          return std::make_tuple( std::get<0>(l) , r );
       }
@@ -717,7 +758,10 @@ namespace transforms
 
          tuple_for_each( rotate_push_back, node_state, left_result );
          using right_size = std::tuple_size<decltype(right_result)>;
-         return tuple_cat( right_result, tuple_drop<left_size::value + right_size::value>(std::move(left_result)) );
+         return tuple_cat( right_result
+                         , tuple_drop<input_arity_t<RightExpr>::value>(std::move(left_result))
+                         , tuple_drop<input_arity_t<LeftExpr>::value>(input)
+                         );
       }
    };
 
@@ -941,12 +985,6 @@ public:
    }
 };
 
-template < int N >
-auto make_placeholder()
-{
-   return typename proto::terminal< placeholder< mpl::int_<N> >>::type{{}};
-}
-
 template < std::size_t N >
 inline auto make_front()
 {
@@ -962,10 +1000,13 @@ inline auto make_front<1>()
 
 auto compile = []( auto expr_ )
 {
+   // static_assert( is_valid_expr<decltype(expr_)>::value , "This expression is not valid." );
+   // TODO must not contain private expressions, yet.
+
    using arity_t = input_arity_t<decltype(expr_)>;
    auto front_expr = make_front<arity_t::value>(); // handles input delays of expr
 
-   auto expr = proto::deep_copy( front_expr |= expr_ );
+   auto expr = front_expr |= expr_;
    using expr_t = decltype(expr);
 
    auto builder = build_state< to_array_tuple<float>::apply >{};
@@ -975,12 +1016,12 @@ auto compile = []( auto expr_ )
 };
 
 
-const proto::terminal< placeholder< mpl::int_<1> >>::type   _1  = {{}};
-const proto::terminal< placeholder< mpl::int_<2> >>::type   _2  = {{}};
-const proto::terminal< placeholder< mpl::int_<3> >>::type   _3  = {{}};
-const proto::terminal< placeholder< mpl::int_<4> >>::type   _4  = {{}};
-const proto::terminal< placeholder< mpl::int_<5> >>::type   _5  = {{}};
-const proto::terminal< placeholder< mpl::int_<6> >>::type   _6  = {{}};
+const auto _1 = make_placeholder<1>();
+const auto _2 = make_placeholder<2>();
+const auto _3 = make_placeholder<3>();
+const auto _4 = make_placeholder<4>();
+const auto _5 = make_placeholder<5>();
+const auto _6 = make_placeholder<6>();
 
 
 }  // flowz

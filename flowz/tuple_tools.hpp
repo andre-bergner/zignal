@@ -111,6 +111,9 @@ auto tuple_take( Tuple&& t )
    return detail::tuple_take<N>( std::forward<Tuple>(t) , 0 );
 }
 
+template< size_t N , typename Tuple >
+using tuple_take_t = decltype( tuple_take<N>( std::declval<Tuple>() ) );
+
 
 //  ------------------------------------------------------------------------------------------------
 // tuple_drop -- (compile-time) drop for tuples
