@@ -4,12 +4,18 @@
   - handle full delay in first expression, i.e. before first seq-op --> could use make_front
   - handle nested feedback: idea transform on the way up from the leafs instead of on the way down
   - handle parallel combiners
+* canonicalization
+  - unary to binary feedback expressions
+  - handle doublicated states/expressions that can be shared, for instance
+    ~( _1[_2] + _2 ) |= _1[_2]   -->  ( _1 + _2 ) ~~ _1[_2] |= _1 ???
 * file proto::lit bug
 * benchmarks: unroll1,2,3 , long filter-chain
   * document clang vs gcc
 
 * analyze memory transfer, play with loop unrolling by 3, ...
 
+* tb.discussed: allow expr[_n], e.g. (_1+_2)[_1]  which is equivalent to _1+_2 |= _1[_1]
+                could be handled by transformer in compile that puts everything into a canonical form
 
 * ~( _1 |= _1[_1] )   must compile !  pull model?
   more complicated:  ~( _1 | _1[_1]   |=   _1[_1] | _1 )

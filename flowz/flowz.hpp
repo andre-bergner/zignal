@@ -227,6 +227,30 @@ namespace transforms
    using output_arity_t = typename boost::result_of<output_arity(Expr)>::type;
 
 
+   // -------------------------------------------------------------------------------------------
+   // front-panel for the expressions -- collects all loose wires
+   // -------------------------------------------------------------------------------------------
+
+
+   template < std::size_t N >
+   inline auto make_front()
+   {
+      return make_front<N-1>() | make_placeholder<1>();
+   }
+
+   template <>
+   inline auto make_front<1>()
+   {
+      return make_placeholder<1>();
+   }
+
+   template < typename Expr >
+   auto add_front_panel( Expr const & x )
+   {
+      return  make_front<input_arity_t<Expr>::value>() |= x;
+   }
+
+
 
 
    // -------------------------------------------------------------------------------------------
@@ -577,7 +601,24 @@ namespace transforms
 
    // example: a*_1 |= _1 + _2 |= _1[_1]   -->  future_expr: a*_1 |= _1 + _2
 
+   //  ~( _1 |= ~(a*_1[_1]+_2[_1]) )
+
    struct split_future_subexpr;
+
+   struct make_canonical : or_
+   <  when
+      <  terminal<_>
+      ,  _
+      >
+   ,  when
+      <  feedback_operator
+      ,  split_future_subexpr( _child )
+      >
+   ,  otherwise< _default<make_canonical> >
+   >
+   {};
+
+
    struct split_in_sequence_combinator;
    struct lifted_default;
 
@@ -587,16 +628,12 @@ namespace transforms
       ,  make_tuple_fn(_)
       >
    ,  when
-      <  feedback_operator
-      ,  split_future_subexpr( _child )
-      >
-   ,  when
       <  sequence_operator
       ,  split_in_sequence_combinator( _left , _right , _state )
       >
    ,  when
       <  _
-      ,   lifted_default( _ , _state )
+      ,  lifted_default( _ , _state )
       >
    >
    {};
@@ -608,7 +645,7 @@ namespace transforms
       {
          using  tag = typename tag_of<Expr>::type;
          unary_to_binary_feedback   e;
-         auto res = std::make_tuple( e(child_c<Ns>(x))... );
+         auto res = std::make_tuple( e(child_c<Ns>(x),s)... );
          return std::tuple_cat( std::make_tuple( make_expr<tag>( std::get<0>(std::get<Ns>(res))... ) )
                               , tail(std::get<0>(res))
                               );
@@ -641,13 +678,15 @@ namespace transforms
       template < typename Expr >
       auto operator()( in_t<Expr> x ) const
       {
+         make_canonical  t;
          unary_to_binary_feedback  e;
          auto split_pred = [](auto expr)
          {
             using expr_t = decltype(expr);
-            return needs_num_direct_input<expr_t,output_arity_t<expr_t>::value>{};
+            return needs_num_direct_input<expr_t,output_arity_t<Expr>::value>{};
          };
-         return impl( e(x, split_pred) );
+         //return impl( e(t(x), split_pred) );
+         return impl( e(t(add_front_panel(x)), split_pred) );
       }
 
       template < typename LiftedExpr >
@@ -672,7 +711,7 @@ namespace transforms
       template < typename LL , typename LR , typename R , typename Pred >
       auto impl( in_t<std::tuple<LL,LR>> l , in_t<R> r , in_t<Pred> p ) const
       {
-         return std::make_tuple( std::get<0>(l), std::get<1>(l) |= r, p );
+         return std::make_tuple( std::get<0>(l), std::get<1>(l) |= r );
       }
 
       template < typename L , typename R , typename Pred >
@@ -699,6 +738,17 @@ namespace transforms
       {
          return std::make_tuple( std::get<0>(l) |= std::get<0>(r) );
       }
+      /*
+      template < typename L , typename R >
+      auto impl3( L const & l , R const & r ) const
+      {
+         //static_assert( !std::is_same<L,L>::value , "should never come here." );
+         std::cout << "---- L ----" << std::endl;
+         print_state(l);
+         std::cout << "---- R ----" << std::endl;
+         print_state(r);
+         return r;
+      }*/
 
       template < typename L , typename RightExpr , typename P >
       auto impl2( std::false_type , in_t<L> l , in_t<RightExpr> r , in_t<P> ) const
@@ -866,6 +916,7 @@ using  transforms :: build_state;
 using  transforms :: input_arity_t;
 using  transforms :: output_arity;
 using  transforms :: eval_it;
+using  transforms :: add_front_panel;
 
 
 //  ------------------------------------------------------------------------------------------------
@@ -985,18 +1036,6 @@ public:
    }
 };
 
-template < std::size_t N >
-inline auto make_front()
-{
-   return ( make_placeholder<N-1>() , make_placeholder<N>() );
-}
-
-template <>
-inline auto make_front<1>()
-{
-   return make_placeholder<1>();
-}
-
 
 auto compile = []( auto expr_ )
 {
@@ -1004,9 +1043,8 @@ auto compile = []( auto expr_ )
    // TODO must not contain private expressions, yet.
 
    using arity_t = input_arity_t<decltype(expr_)>;
-   auto front_expr = make_front<arity_t::value>(); // handles input delays of expr
 
-   auto expr = front_expr |= expr_;
+   auto expr = add_front_panel(expr_);
    using expr_t = decltype(expr);
 
    auto builder = build_state< to_array_tuple<float>::apply >{};
