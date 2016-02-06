@@ -171,6 +171,13 @@ namespace transforms
          >()
       >
    ,  when
+      <  binary_feedback_operator
+      ,  mpl::max
+         <  mpl::int_<0>
+         ,  mpl::minus< input_arity(_left) , output_arity(_right) >
+         >()
+      >
+   ,  when
       <  parallel_operator
       ,  mpl::plus< input_arity(_left) , input_arity(_right) >()
       >
@@ -200,6 +207,10 @@ namespace transforms
    ,  when
       <  feedback_operator
       ,  output_arity(_child)
+      >
+   ,  when
+      <  binary_feedback_operator
+      ,  output_arity(_right)
       >
    ,  when
       <  parallel_operator
@@ -435,6 +446,13 @@ namespace transforms
          ,  tuple_drop_
             (  output_arity(_child)
             ,  apply(_child)
+            )
+         >
+      ,  when
+         <  binary_feedback_operator
+         ,  tuple_drop_
+            (  output_arity(_right)
+            ,  apply(_left)
             )
          >
       ,  when
@@ -685,8 +703,8 @@ namespace transforms
             using expr_t = decltype(expr);
             return needs_num_direct_input<expr_t,output_arity_t<Expr>::value>{};
          };
-         //return impl( e(t(x), split_pred) );
-         return impl( e(t(add_front_panel(x)), split_pred) );
+         //return impl( e(t(add_front_panel(x)), split_pred) );
+         return impl( e(t(make_front<output_arity_t<Expr>::value>() |= x), split_pred) );
       }
 
       template < typename LiftedExpr >
@@ -738,17 +756,6 @@ namespace transforms
       {
          return std::make_tuple( std::get<0>(l) |= std::get<0>(r) );
       }
-      /*
-      template < typename L , typename R >
-      auto impl3( L const & l , R const & r ) const
-      {
-         //static_assert( !std::is_same<L,L>::value , "should never come here." );
-         std::cout << "---- L ----" << std::endl;
-         print_state(l);
-         std::cout << "---- R ----" << std::endl;
-         print_state(r);
-         return r;
-      }*/
 
       template < typename L , typename RightExpr , typename P >
       auto impl2( std::false_type , in_t<L> l , in_t<RightExpr> r , in_t<P> ) const

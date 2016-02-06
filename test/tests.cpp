@@ -24,6 +24,7 @@ void test_unary_to_binary()
    auto bin_fb = []( auto x, auto y)
    {  return make_binary_feedback(x,y);  };
 
+   BOOST_TEST(is_same(  bin_fb( _1 , _1[_1] ) , un2bin(~( _1[_1] ))  ));
    BOOST_TEST(is_same(  bin_fb( _1 |= _1 , _1[_1] ) , un2bin(~( _1 |= _1[_1] ))  ));
 
    BOOST_TEST(is_same(  bin_fb( _1 |= _1 |= _1 , _1[_1] ) , un2bin(~( (_1 |= _1) |= _1[_1] ))  ));
@@ -33,19 +34,25 @@ void test_unary_to_binary()
    BOOST_TEST(is_same(  bin_fb( _1 |= _1 , (_1[_1] |= _1) |= _1[_1]  ) , un2bin(~( (_1  |=  _1[_1]  |=  _1) |= (_1[_1]) ))  ));
    BOOST_TEST(is_same(  bin_fb( _1 |= _1 , _1[_1] |= _1 |= _1[_1] ) , un2bin(~( (_1) |= (_1[_1]  |=  _1  |=  _1[_1]) ))  ));
 
-   BOOST_TEST(is_same(  bin_fb( _1|_1 |= _1 , _1[_1] +_2 ) , un2bin(~( _1 |= _1[_1] + _2 ))  ));
-   BOOST_TEST(is_same(  bin_fb( _1|_1 |= _1+2 , _1[_1] + _2 ) , un2bin(~( _1+2 |= _1[_1] + _2 ))  ));
-   BOOST_TEST(is_same(  bin_fb( _1|_1 |= _1+2 , _1[_1] - 13 + _2 ) , un2bin(~( _1+2 |= _1[_1] - 13 + _2 ))  ));
+   BOOST_TEST(is_same(  bin_fb( _1 |= _1 , _1[_1] +_2 ) , un2bin(~( _1 |= _1[_1] + _2 ))  ));
+   BOOST_TEST(is_same(  bin_fb( _1 |= _1+2 , _1[_1] + _2 ) , un2bin(~( _1+2 |= _1[_1] + _2 ))  ));
+   BOOST_TEST(is_same(  bin_fb( _1 |= _1+2 , _1[_1] - 13 + _2 ) , un2bin(~( _1+2 |= _1[_1] - 13 + _2 ))  ));
 
-   BOOST_TEST(is_same(  bin_fb( _1|_1 , _2 |= _1 ) , un2bin(~( _2 |= _1 ))  ));
-   BOOST_TEST(is_same(  bin_fb( _1|_1|_1 , _2 |= _1[_1] + _2[_1] ) , un2bin(~( _2 |= _1[_1] + _2[_1] ))  ));
-   BOOST_TEST(is_same(  bin_fb( _1|_1|_1 , _2 |= _1 |= _1[_1] + _2[_1] ) , un2bin(~( _2 |= _1 |= _1[_1] + _2[_1] ))  ));
+   BOOST_TEST(is_same(  bin_fb( _1|_1 |= _1 + _2 , _1[_1] |= (_1,_1) ) , un2bin(~( _1 + _2 |= _1[_1] |= (_1,_1) ))  ));
+
+   BOOST_TEST(is_same(  bin_fb( _1 , _2 |= _1 ) , un2bin(~( _2 |= _1 ))  ));
+   BOOST_TEST(is_same(  bin_fb( _1 , _2 |= _1[_1] + _2[_1] ) , un2bin(~( _2 |= _1[_1] + _2[_1] ))  ));
+   BOOST_TEST(is_same(  bin_fb( _1 , _2 |= _1 |= _1[_1] + _2[_1] ) , un2bin(~( _2 |= _1 |= _1[_1] + _2[_1] ))  ));
+
+   BOOST_TEST(is_same(  bin_fb( _1 |= _1 + _2 , _1[_1] ) , un2bin(~( _1 + _2 |= _1[_1] ) )  ));
 
 
    //  ---------------------------------------------------------------------------------------------
    // nested feedback operators
 
-   BOOST_TEST(is_same(  bin_fb( _1 |= _1 , _1[_1] |= bin_fb( _1|_1 |= _1 , _1[_1] + _2 )) , un2bin(~(_1 |= _1[_1] |= ~( _1 |= _1[_1] + _2 )) )  ));
+   BOOST_TEST(is_same(  bin_fb( _1 , bin_fb( _1 , _1[_1] + _2[_1] )) , un2bin(~~( _1[_1] + _2[_1] ) )  ));
+   //BOOST_TEST(is_same(  bin_fb( _1 , bin_fb( _1 |= _1 + _2 , _1[_1] )) , un2bin(~~( _1 + _2 |= _1[_1] ) )  ));
+   BOOST_TEST(is_same(  bin_fb( _1 , _1[_1] |= bin_fb( _1 , _1[_1] + _2 )) , un2bin(~(_1[_1] |= ~( _1[_1] + _2 )) )  ));
 
 }
 
