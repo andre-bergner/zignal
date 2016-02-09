@@ -68,13 +68,17 @@ void test_wires_around_boxes()
    BOOST_TEST_EQ( 2 , ins(wire_around_prev_box) );
    BOOST_TEST_EQ( 1 , outs(wire_around_prev_box) );
    auto wp = compile( wire_around_prev_box );
-   BOOST_TEST( std::make_tuple(1337) == wp(2,1337) );
+   auto wpr = wp(2,1337);
+   BOOST_TEST( std::make_tuple(1337) == wpr );
+   BOOST_TEST_EQ( 1 , std::tuple_size<decltype(wpr)>::value );
 
    auto wire_around_succ_box = ( (_1,_1) |= _1);
    BOOST_TEST_EQ( 1 , ins(wire_around_succ_box) );
    BOOST_TEST_EQ( 2 , outs(wire_around_succ_box) );
    auto ws = compile( wire_around_succ_box );
-   BOOST_TEST( std::make_tuple(1337,1337) == ws(1337) );
+   auto wsr = ws(1337);
+   BOOST_TEST( std::make_tuple(1337) == wsr );
+   BOOST_TEST_EQ( 2 , std::tuple_size<decltype(wsr)>::value );
 }
 
 

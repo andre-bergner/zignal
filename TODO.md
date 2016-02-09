@@ -1,6 +1,5 @@
 # todo
 
-* fix bug when compiling tests with gcc
 * unary-to-binary-feedback
   - bug in predicate when feedback path is thinning ?, e.g.  _1 + _2 |= _1[_1] |= _1,_1
   - handle nested feedback: idea transform on the way up from the leafs instead of on the way down

@@ -816,8 +816,8 @@ namespace transforms
          tuple_for_each( rotate_push_back, node_state, left_result );
          using right_size = std::tuple_size<decltype(right_result)>;
          return tuple_cat( right_result
-                         , tuple_drop<input_arity_t<RightExpr>::value>(std::move(left_result))
-                         , tuple_drop<input_arity_t<LeftExpr>::value>(input)
+                         , tuple_drop< input_arity_t<RightExpr>::value >( std::move(left_result) )
+                         , tuple_drop< input_arity_t<LeftExpr>::value + left_size::value >( input )
                          );
       }
    };
