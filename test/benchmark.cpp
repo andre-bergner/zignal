@@ -22,8 +22,8 @@ namespace biquad
              , a2 =  0.8
              ;
 
-   auto fwd  = proto::deep_copy(  (b0 * _1  +  b1 * _1[_1]  +  b2 * _1[_2] ) );
-   auto bwd  = proto::deep_copy( ~(     _2  +  a1 * _1[_1]  +  a2 * _1[_2] ) );
+   auto fwd  =   (b0 * _1  +  b1 * _1[_1]  +  b2 * _1[_2] );
+   auto bwd  =  ~(     _2  +  a1 * _1[_1]  +  a2 * _1[_2] );
 
    namespace direct_form_1
    {
@@ -75,6 +75,57 @@ namespace biquad
          };
       };
    }
+
+   auto delay_add_2  =  _1[_1] + _2  |=  _1[_1] + _2;
+   auto fwdt         =  (  b2*_1 ,  b1*_1 , b0*_1 )  |=  delay_add_2;
+   auto bwdt         =  ( -a2*_1 , -a1*_1 )          |=  delay_add_2;
+
+   namespace direct_form_1_transposed
+   {
+      auto make_flow = []
+      {
+         return compile( ~bwdt |= fwdt );
+      };
+
+      auto make_custom = []
+      {
+         return [ = , v1 = 0.f , v2 = 0.f , w1 = 0.f , w2 = 0.f ](float x) mutable
+         {
+            auto
+            u   =        x  +  w1,
+            y   =   b0 * u  +  v1;
+
+            v1  =   b1 * u  +  v2;
+            v2  =   b2 * u;
+            w1  =  -a1 * u  +  w2;
+            w2  =  -a2 * u;
+
+            return std::make_tuple(y);
+         };
+      };
+   }
+
+
+   namespace direct_form_2_transposed
+   {
+      auto make_flow = []
+      {
+         return compile( fwdt |= ~bwdt );
+      };
+
+      auto make_custom = []
+      {
+         return [ = , u1 = 0.f , u2 = 0.f ](float x) mutable
+         {
+            auto
+            y   =  b0 * x             +  u1;
+            u1  =  b1 * x  -  a1 * y  +  u2;
+            u2  =  b2 * x  -  a2 * y;
+            return std::make_tuple(y);
+         };
+      };
+   }
+
 }
 
 
@@ -155,6 +206,60 @@ static void biquad_direct_form_2_custom(benchmark::State& s)
 BENCHMARK(biquad_direct_form_2_custom);
 
 
+
+
+
+static void biquad_direct_form_1_transposed_flowz(benchmark::State& s)
+{
+   float x;
+   auto f = biquad::direct_form_1_transposed::make_flow();
+   while (s.KeepRunning())
+   {
+      escape(x);
+      x = sum_dirac(f);
+   }
+}
+BENCHMARK(biquad_direct_form_1_transposed_flowz);
+
+
+static void biquad_direct_form_1_transposed_custom(benchmark::State& s)
+{
+   float x;
+   auto f = biquad::direct_form_1_transposed::make_custom();
+   while (s.KeepRunning())
+   {
+      escape(x);
+      x = sum_dirac(f);
+   }
+}
+BENCHMARK(biquad_direct_form_1_transposed_custom);
+
+
+
+static void biquad_direct_form_2_transposed_flowz(benchmark::State& s)
+{
+   float x;
+   auto f = biquad::direct_form_2_transposed::make_flow();
+   while (s.KeepRunning())
+   {
+      escape(x);
+      x = sum_dirac(f);
+   }
+}
+BENCHMARK(biquad_direct_form_2_transposed_flowz);
+
+
+static void biquad_direct_form_2_transposed_custom(benchmark::State& s)
+{
+   float x;
+   auto f = biquad::direct_form_2_transposed::make_custom();
+   while (s.KeepRunning())
+   {
+      escape(x);
+      x = sum_dirac(f);
+   }
+}
+BENCHMARK(biquad_direct_form_2_transposed_custom);
 
 
 

@@ -172,9 +172,15 @@ namespace transforms
       >
    ,  when
       <  binary_feedback_operator
-      ,  mpl::max
-         <  mpl::int_<0>
-         ,  mpl::minus< input_arity(_left) , output_arity(_right) >
+      ,  mpl::plus
+         <  mpl::max
+            <  mpl::int_<0>
+            ,  mpl::minus< input_arity(_left) , output_arity(_right) >
+            >
+         ,  mpl::max
+            <  mpl::int_<0>
+            ,  mpl::minus< input_arity(_right) , output_arity(_left) >
+            >
          >()
       >
    ,  when
@@ -450,9 +456,15 @@ namespace transforms
          >
       ,  when
          <  binary_feedback_operator
-         ,  tuple_drop_
-            (  output_arity(_right)
-            ,  apply(_left)
+         ,  tuple_cat_fn
+            (  tuple_drop_
+               (  output_arity(_right)
+               ,  apply(_left)
+               )
+            ,  tuple_drop_
+               (  output_arity(_left)
+               ,  apply(_right)
+               )
             )
          >
       ,  when
@@ -525,19 +537,22 @@ namespace transforms
       <  when
          <  feedback_operator
          ,  make_tuple_fn
-            (  StateCtor
-               (  tuple_take_
-                  (  output_arity(_child)
-                  ,  max_input_delays(_child)
-                  )
-               )
-            ,  apply( _child  )
+            (  StateCtor(max_input_delays( _child ))
+            ,  apply( _child )
+            )
+         >
+      ,  when
+         <  binary_feedback_operator
+         ,  make_tuple_fn
+            (  StateCtor( tuple_take_( output_arity(_left) , max_input_delays(_right) ))
+            ,  apply( _left  )
+            ,  apply( _right )
             )
          >
       ,  when
          <  sequence_operator
          ,  make_tuple_fn
-            (  StateCtor(max_input_delays( _right  ))
+            (  StateCtor( tuple_take_( output_arity(_left) , max_input_delays(_right) ))
             ,  apply( _left  )
             ,  apply( _right )
             )
@@ -566,6 +581,7 @@ namespace transforms
    struct place_delay;
    struct sequence;
    struct feedback;
+   struct binary_feedback;
    struct parallel;
 
 
@@ -582,10 +598,10 @@ namespace transforms
       <  feedback_operator
       ,  feedback( _child , _env_var<current_input_t> , _env_var<delayed_input_t> )
       >
-   //,  when
-   //   <  binary_feedback_operator
-   //   ,  feedback( _left , _right, _env_var<current_input_t> , _env_var<delayed_input_t> )
-   //   >
+   ,  when
+      <  binary_feedback_operator
+      ,  binary_feedback( _left , _right, _env_var<current_input_t> , _env_var<delayed_input_t> )
+      >
    ,  when
       <  sequence_operator
       ,  sequence( _left , _right , _env_var<current_input_t> , _env_var<delayed_input_t> )
@@ -698,10 +714,11 @@ namespace transforms
       {
          make_canonical  t;
          unary_to_binary_feedback  e;
-         auto split_pred = [](auto expr)
+         auto split_pred = [](auto const & l, auto const & r)
          {
-            using expr_t = decltype(expr);
-            return needs_num_direct_input<expr_t,output_arity_t<Expr>::value>{};
+            using l_expr_t = decltype(l);
+            using r_expr_t = decltype(r);
+            return needs_num_direct_input<r_expr_t,output_arity_t<l_expr_t>::value>{};
          };
          //return impl( e(t(add_front_panel(x)), split_pred) );
          return impl( e(t(make_front<output_arity_t<Expr>::value>() |= x), split_pred) );
@@ -735,7 +752,7 @@ namespace transforms
       template < typename L , typename R , typename Pred >
       auto impl( in_t<std::tuple<L>> l , in_t<R> r , in_t<Pred> p ) const
       {
-         return impl2( p(r), l, r, p );
+         return impl2( p(std::get<0>(l),r), l, r, p );
       }
 
       template < typename L , typename R , typename P >
@@ -795,26 +812,35 @@ namespace transforms
       {
          eval_it  e;
 
-         auto in_state    = std::get<0>(state);
-         auto& node_state  = std::get<0>(std::get<1>(state));
-         auto& left_state  = std::get<1>(std::get<1>(state));
-         auto& right_state = std::get<2>(std::get<1>(state));
+         auto in_state    = deep_tie(std::get<0>(state));
+         auto node_state  = deep_tie(std::get<0>(std::get<1>(state)));
+         auto left_state  = deep_tie(std::get<1>(std::get<1>(state)));
+         auto right_state = deep_tie(std::get<2>(std::get<1>(state)));
+
+         //static_assert( std::tuple_size<Input>::value == std::tuple_size<decltype(in_state)>::value );
+
+         auto left_delayed_input = tuple_take<input_arity_t<LeftExpr>::value>(in_state);
 
          auto left_result =
             flatten_tuple( std::make_tuple(
-               e( l, 0, ( current_input = tuple_take<input_arity_t<LeftExpr>::value>(input) , delayed_input = std::tie(in_state,left_state) ))
+               e( l, 0, ( current_input = tuple_take<input_arity_t<LeftExpr>::value>(input)
+                        , delayed_input = std::tie( left_delayed_input, left_state )
+                        ))
             ));
 
          using left_size = std::tuple_size<decltype(left_result)>;
-         auto right_input = tuple_cat( left_result, tuple_drop<left_size::value>(input) );
+         auto right_input = tuple_cat( left_result, tuple_drop<input_arity_t<LeftExpr>::value>(input) );
+         auto right_delayed_input = std::tuple_cat( node_state , tuple_drop<input_arity_t<LeftExpr>::value>(in_state) );
 
          auto right_result =
             flatten_tuple( std::make_tuple(
-               e( r, 0, ( current_input = right_input , delayed_input = std::tie(node_state,right_state) ))
+               e( r, 0, ( current_input = right_input
+                        , delayed_input = std::tie( right_delayed_input, right_state )
+                        ))
             ));
 
          tuple_for_each( rotate_push_back, node_state, left_result );
-         using right_size = std::tuple_size<decltype(right_result)>;
+
          return tuple_cat( right_result
                          , tuple_drop< input_arity_t<RightExpr>::value >( std::move(left_result) )
                          , tuple_drop< input_arity_t<LeftExpr>::value + left_size::value >( input )
@@ -850,42 +876,48 @@ namespace transforms
       }
    };
 
-   /*
-   struct binary_feedback_operator : callable_decltype
+   struct binary_feedback : callable_decltype
    {
-      template < typename Expr , typename Input , typename State >
+      template < typename LeftExpr , typename RightExpr , typename Input , typename State >
       auto operator()( in_t<LeftExpr> l , in_t<RightExpr> r , in_t<Input> input , State state ) const
       {
          eval_it  e;
 
          auto in_state    = deep_tie(std::get<0>(state));
          auto node_state  = deep_tie(std::get<0>(std::get<1>(state)));
-         auto child_state = deep_tie(std::get<1>(std::get<1>(state)));
-         auto next_state  = std::tuple_cat( node_state, in_state );
+         auto left_state  = deep_tie(std::get<1>(std::get<1>(state)));
+         auto right_state = deep_tie(std::get<2>(std::get<1>(state)));
 
-         auto split_expr   = unary_to_binary_feedback{}(x);
-         auto current_expr = std::get<0>(unary_to_binary_feedback{}(x));
-         auto future_expr  = std::get<1>(unary_to_binary_feedback{}(x));
+         auto future_input = std::tuple_cat
+                           ( repeat_t<output_arity_t<LeftExpr>::value, bottom_type>{}
+                           , tuple_drop< input_arity_t<LeftExpr>::value-output_arity_t<RightExpr>::value >(input) );
+                          // TODO min( 0 , drop_value )
+         auto left_delayed_input = std::tuple_cat
+               ( node_state , tuple_drop< input_arity_t<LeftExpr>::value-output_arity_t<RightExpr>::value >(in_state) );
 
-
-         auto promise_input = repeat_t<input_arity_t<decltype(current_expr)>::value, bottom_type>{};
          auto result =
             flatten_tuple( std::make_tuple(
-               e( x, 0, ( current_input = promise_input , delayed_input = std::tie(next_state,child_state) ))
+               e( r, 0, ( current_input = future_input , delayed_input = std::tie(left_delayed_input,left_state) ))
             ));
 
-         auto future_input = std::tuple_cat( result , input );
-         auto fut_result =
+         auto promise_input = std::tuple_cat( result, tuple_take< input_arity_t<LeftExpr>::value-output_arity_t<RightExpr>::value >(input) );
+         auto right_delayed_input = std::tuple_cat
+               ( repeat_t<output_arity_t<LeftExpr>::value, no_state>{}
+               , tuple_take< input_arity_t<LeftExpr>::value-output_arity_t<RightExpr>::value >(in_state) );
+
+         auto promise_result =
             flatten_tuple( std::make_tuple(
-               e( x, 0, ( current_input = future_input , delayed_input = std::tie(next_state,child_state) ))
+               e( l, 0, ( current_input = promise_input , delayed_input = std::tie( right_delayed_input ,left_state) ))
             ));
 
-         tuple_for_each( rotate_push_back, node_state, future_input );
-         using size = std::tuple_size<decltype(result)>;
-         return tuple_cat( result, tuple_drop<size::value>(input) );
+         tuple_for_each( rotate_push_back, node_state, promise_result );
+
+         return tuple_cat( result
+                         //, tuple_drop< input_arity_t<RightExpr>::value >( std::move(left_result) )
+                         //, tuple_drop< input_arity_t<LeftExpr>::value + left_size::value >( input )
+                         );
       }
    };
-   */
 
    struct parallel : callable_decltype
    {
@@ -1051,7 +1083,9 @@ auto compile = []( auto expr_ )
 
    using arity_t = input_arity_t<decltype(expr_)>;
 
-   auto expr = add_front_panel(expr_);
+   transforms :: make_canonical  canonize;
+
+   auto expr = canonize( add_front_panel(expr_) );
    using expr_t = decltype(expr);
 
    auto builder = build_state< to_array_tuple<float>::apply >{};

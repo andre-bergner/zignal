@@ -46,6 +46,11 @@ void test_unary_to_binary()
 
    BOOST_TEST(is_same(  bin_fb( _1 |= _1 + _2 , _1[_1] ) , un2bin(~( _1 + _2 |= _1[_1] ) )  ));
 
+   //  ---------------------------------------------------------------------------------------------
+   // expressions with comma
+
+   BOOST_TEST(is_same(  bin_fb( _1 |= (_1,_1) , _1[_1] + _2[_1] ) , un2bin(~( (_1,_1) |= _1[_1] + _2[_1] ) )  ));
+   BOOST_TEST(is_same(  bin_fb( _1 |= (_1,_1) |= _1 + _2 , _1[_1] ) , un2bin(~( (_1,_1) |= _1 + _2 |= _1[_1] ) )  ));
 
    //  ---------------------------------------------------------------------------------------------
    // nested feedback operators
@@ -54,6 +59,22 @@ void test_unary_to_binary()
    //BOOST_TEST(is_same(  bin_fb( _1 , bin_fb( _1 |= _1 + _2 , _1[_1] )) , un2bin(~~( _1 + _2 |= _1[_1] ) )  ));
    BOOST_TEST(is_same(  bin_fb( _1 , _1[_1] |= bin_fb( _1 , _1[_1] + _2 )) , un2bin(~(_1[_1] |= ~( _1[_1] + _2 )) )  ));
 
+
+   input_arity       ins;
+   output_arity      outs;
+   max_input_delays  del;
+
+   {  auto x = un2bin( ~( _1 + _2[_1] |= _1[_1] + _2 ) );
+      BOOST_TEST_EQ( 2 , ins(x) );
+      BOOST_TEST_EQ( 1 , outs(x) );
+      BOOST_TEST( std::make_tuple(1,0) == del(x) );
+   }
+
+   {  auto x = un2bin( ~( _1 + _3[_1] |= _1[_1] + _2 ) );
+      BOOST_TEST_EQ( 3 , ins(x) );
+      BOOST_TEST_EQ( 1 , outs(x) );
+      BOOST_TEST( std::make_tuple(0,1,0) == del(x) );
+   }
 }
 
 
@@ -115,12 +136,30 @@ void test_simple_expressions()
 }
 
 
+void test_delayed_sequences()
+{
+   using namespace flowz;
+
+   {  auto f = compile( _1 |= _1[_1] );
+      BOOST_TEST( std::make_tuple(0)    == f(1337) );
+      BOOST_TEST( std::make_tuple(1337) == f(0) );
+      BOOST_TEST( std::make_tuple(0)    == f(0) );
+   }
+
+   {  auto f = compile( _1 |= (_1[_1],_2[_2]) );
+      BOOST_TEST( std::make_tuple(0,0)     == f(1337,42) );
+      BOOST_TEST( std::make_tuple(1337,0)  == f(0,0)     );
+      BOOST_TEST( std::make_tuple(0,42)    == f(0,0)     );
+   }
+}
+
 
 int main()
 {
    test_unary_to_binary();
    test_wires_around_boxes();
    test_simple_expressions();
+   test_delayed_sequences();
 
    return boost::report_errors();
 }
