@@ -55,3 +55,8 @@
 * parameter (referencing type)
 * define proper grammar
 * tuprix type in flowz
+
+
+* look into:
+    * https://en.wikipedia.org/wiki/Hardware_description_language
+    * http://visualhdl.sysprogs.org/tutorial/04-advanced-templates.php
