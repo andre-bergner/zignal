@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cxxabi.h>
+#include <boost/algorithm/string/erase.hpp>
 
 inline std::string demangle(const char* name)
 {
