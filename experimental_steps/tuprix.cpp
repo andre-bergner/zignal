@@ -1,182 +1,120 @@
 
 #include <type_traits>
 #include <iostream>
-#include <vector>
 
-//#include "tuple_tools.hpp"
+#include <flowz/tuple_tools.hpp>
+#include <flowz/dirac.hpp>
+#include <flowz/demangle.h>
 
+//------------------------------------------------------------------------------------------------------------------
+//  zero, one, two -- types and instances
+//------------------------------------------------------------------------------------------------------------------
 
-namespace ni {
+struct Zero { template< typename Number > operator Number() { return Number{0}; } };
+struct One  { template< typename Number > operator Number() { return Number{1}; } };
 
-   //------------------------------------------------------------------------------------------------------------------
-   //  zero, one, two -- types and instances
-   //------------------------------------------------------------------------------------------------------------------
-
-   struct Zero { template< typename Number > operator Number() { return Number{0}; } };
-   struct One  { template< typename Number > operator Number() { return Number{1}; } };
-
-   namespace {
-      Zero  zero;
-      One   one;
-   }
-
-   std::ostream& operator<<( std::ostream& o , Zero ) { o << "𝟎"; return o; }
-   std::ostream& operator<<( std::ostream& o , One  ) { o << "𝟏"; return o; }
-
-   //------------------------------------------------------------------------------------------------------------------
-   //  type traits
-   //------------------------------------------------------------------------------------------------------------------
-
-   template< typename T >
-   using is_zero = std::is_same< std::decay_t<T> , Zero >;
-
-
-
-   //------------------------------------------------------------------------------------------------------------------
-   //  Algebra for Zero
-   //------------------------------------------------------------------------------------------------------------------
-
-   //------------------------------------------------------------------------------------------------------------------
-   // addition
-
-   template< typename X >
-   auto operator+ ( X const & x , Zero ) -> X const &   { return  x; }
-
-   template< typename X >
-   auto operator+ ( Zero , X const & x ) -> X const &   { return  x; }
-
-   auto operator+ ( Zero , Zero ) -> Zero               { return  {}; }
-
-
-   //------------------------------------------------------------------------------------------------------------------
-   // subtraction
-
-   template< typename X >
-   auto operator- ( X const & x , Zero ) -> X const &   { return  x; }
-
-   template< typename X >
-   auto operator- ( Zero , X const & x ) -> X           { return  -x;  }
-
-   auto operator- ( Zero , Zero ) -> Zero               { return  {}; }
-
-   auto operator- ( Zero ) -> Zero                      { return  {}; }
-
-
-   //------------------------------------------------------------------------------------------------------------------
-   // multiplication
-
-   template< typename X , typename Y ,
-     typename = std::enable_if_t< is_zero<X>::value or is_zero<Y>::value > >
-   auto operator* ( X const & , Y const & ) -> Zero   { return {}; }
-
-
-
-
-   //------------------------------------------------------------------------------------------------------------------
-   //  Algebra for One
-   //------------------------------------------------------------------------------------------------------------------
-
-   //------------------------------------------------------------------------------------------------------------------
-   // addition
-
-   template< typename X >
-   auto operator+ ( X const & x , One ) -> X    { return  x + X{1}; }
-
-   template< typename X >
-   auto operator+ ( One , X const & x ) -> X    { return  X{1} + x; }
-
-   auto operator+ ( Zero , One  ) -> One        { return  {}; }
-   auto operator+ ( One  , Zero ) -> One        { return  {}; }
-
-
-   //------------------------------------------------------------------------------------------------------------------
-   // subtraction
-
-   //auto operator- ( One ) -> Minus_one        { return  {}; }
-
-   template< typename X >
-   auto operator- ( X const & x , One ) -> X    { return  x - X{1}; }
-
-   template< typename X >
-   auto operator- ( One , X const & x ) -> X    { return  X{1} - x; }
-
-   auto operator- ( One  , One  ) -> Zero       { return  {}; }
-   auto operator- ( Zero , One  ) -> int        { return  -1; }
-   auto operator- ( One  , Zero ) -> One        { return  {}; }
-
-
-   //------------------------------------------------------------------------------------------------------------------
-   // multiplication
-
-   template< typename X >
-   auto operator* ( One , X const & x ) -> X const &   { return  x; }
-
-   template< typename X >
-   auto operator* ( X const & x , One ) -> X const &   { return  x; }
-
-   auto operator* ( One , One )  -> One    { return {}; }
-   auto operator* ( Zero , One ) -> Zero   { return {}; }
-   auto operator* ( One , Zero ) -> Zero   { return {}; }
-
-
+namespace {
+   Zero  zero;
+   One   one;
 }
 
+std::ostream& operator<<( std::ostream& o , Zero ) { o << "𝟎"; return o; }
+std::ostream& operator<<( std::ostream& o , One  ) { o << "𝟏"; return o; }
 
-#include <tuple>
+//------------------------------------------------------------------------------------------------------------------
+//  type traits
+//------------------------------------------------------------------------------------------------------------------
 
-
-
-
-
-
-
-template < typename T , typename... Ts >
-auto head( std::tuple<T,Ts...> t )
-{
-   return  std::get<0>(t);
-}
-
-template <  typename... Ts , std::size_t... Ns >
-auto tail_impl( std::index_sequence<Ns...> , std::tuple<Ts...> const & t )
-{
-   return  std::tie( std::get<Ns+1u>(t)... );
-   //return  std::make_tuple( std::get<Ns+1u>(t)... );
-}
-
-template < typename T, typename... Ts >
-auto tail( std::tuple<T,Ts...> const & t )
-{
-   return  tail_impl( std::make_index_sequence<sizeof...(Ts)>() , t );
-}
+template< typename T >
+using is_zero = std::is_same< std::decay_t<T> , Zero >;
 
 
 
+//------------------------------------------------------------------------------------------------------------------
+//  Algebra for Zero
+//------------------------------------------------------------------------------------------------------------------
 
-namespace tuple_ostream_detail {
+//------------------------------------------------------------------------------------------------------------------
+// addition
+
+template< typename X >
+auto operator+ ( X const & x , Zero ) -> X const &   { return  x; }
+
+template< typename X >
+auto operator+ ( Zero , X const & x ) -> X const &   { return  x; }
+
+auto operator+ ( Zero , Zero ) -> Zero               { return  {}; }
 
 
-   template < typename T >
-   void print( std::ostream& o, std::tuple<T> const & t )
-   {
-      o << std::get<0>(t) << " )";
-   }
+//------------------------------------------------------------------------------------------------------------------
+// subtraction
 
-   template < typename T , typename T1, typename... Ts >
-   void print( std::ostream& o, std::tuple<T,T1,Ts...> const & t )
-   {
-      o << std::get<0>(t) << ", ";
-      print( o, tail(t) );
-   }
+template< typename X >
+auto operator- ( X const & x , Zero ) -> X const &   { return  x; }
 
-}
+template< typename X >
+auto operator- ( Zero , X const & x ) -> X           { return  -x;  }
 
-template < typename... Ts >
-std::ostream& operator<<( std::ostream& o , std::tuple<Ts...> const & t )
-{
-   o << "( ";
-   tuple_ostream_detail::print( o , t );
-   return o;
-}
+auto operator- ( Zero , Zero ) -> Zero               { return  {}; }
+
+auto operator- ( Zero ) -> Zero                      { return  {}; }
+
+
+//------------------------------------------------------------------------------------------------------------------
+// multiplication
+
+template< typename X , typename Y ,
+  typename = std::enable_if_t< is_zero<X>::value or is_zero<Y>::value > >
+auto operator* ( X const & , Y const & ) -> Zero   { return {}; }
+
+
+
+
+//------------------------------------------------------------------------------------------------------------------
+//  Algebra for One
+//------------------------------------------------------------------------------------------------------------------
+
+//------------------------------------------------------------------------------------------------------------------
+// addition
+
+template< typename X >
+auto operator+ ( X const & x , One ) -> X    { return  x + X{1}; }
+
+template< typename X >
+auto operator+ ( One , X const & x ) -> X    { return  X{1} + x; }
+
+auto operator+ ( Zero , One  ) -> One        { return  {}; }
+auto operator+ ( One  , Zero ) -> One        { return  {}; }
+
+
+//------------------------------------------------------------------------------------------------------------------
+// subtraction
+
+//auto operator- ( One ) -> Minus_one        { return  {}; }
+
+template< typename X >
+auto operator- ( X const & x , One ) -> X    { return  x - X{1}; }
+
+template< typename X >
+auto operator- ( One , X const & x ) -> X    { return  X{1} - x; }
+
+auto operator- ( One  , One  ) -> Zero       { return  {}; }
+auto operator- ( Zero , One  ) -> int        { return  -1; }
+auto operator- ( One  , Zero ) -> One        { return  {}; }
+
+
+//------------------------------------------------------------------------------------------------------------------
+// multiplication
+
+template< typename X >
+auto operator* ( One , X const & x ) -> X const &   { return  x; }
+
+template< typename X >
+auto operator* ( X const & x , One ) -> X const &   { return  x; }
+
+auto operator* ( One , One )  -> One    { return {}; }
+auto operator* ( Zero , One ) -> Zero   { return {}; }
+auto operator* ( One , Zero ) -> Zero   { return {}; }
 
 
 
@@ -271,47 +209,48 @@ auto operator*( X const & x , Y const & y )
    return tuple_transform( x , [&y](auto x){ return dot(x,y); } );
 }
 
-
-double foo()
+template< std::size_t N , typename Tuprix , typename Tuple >
+auto tuprix_impl( std::integral_constant<size_t,1> , Tuprix t , Tuple xs )
 {
-   static auto x = 0.123;
-   x *= 4.0*(1.-x);
-   return x;
+   return  std::make_tuple(xs);
 }
 
+template< std::size_t N , std::size_t M , typename Tuprix , typename Tuple >
+auto tuprix_impl( std::integral_constant<size_t,M> , Tuprix t , Tuple xs )
+{
+   return std::tuple_cat( std::make_tuple( tuple_take<N>(xs) ) , tuprix_impl<N>(std::integral_constant<size_t,M-1>{},t,tuple_drop<N>(xs)) );
+}
+
+
+template< std::size_t N , std::size_t M , typename... Xs >
+auto tuprix( Xs&&... xs )
+{
+   static_assert( sizeof...(xs) == M*N , "Number of elements do not match specified size constraints.");
+   return tuprix_impl<N>( std::integral_constant<size_t,M>{} , std::make_tuple() , std::forward_as_tuple(xs...) );
+}
+
+
+template< typename... Xs >
+auto tup( Xs&&... xs ) { return std::make_tuple( xs... ); }
+
+
+
+
 int main()
-{/*
-   auto t1 = std::make_tuple( ni::one, 3.14,     3.f  );
-   auto t2 = std::make_tuple( 2      , ni::zero, 7u   );
+{
+   auto a = tuprix<2,2>( 0.6  , -0.3
+                       , one , zero );
 
-   std::cout << t1 << std::endl;
-   std::cout << t2 << std::endl;
-   std::cout << t1+t2 << std::endl;
-   std::cout << sum(t1) << std::endl;
-   std::cout << sum(t2) << std::endl;
-   std::cout << dot(t1,t2) << std::endl;
-   std::cout << dot(t1,t1) << std::endl;
+   auto b = tuprix<2,2>( 0.5  , 0.5
+                       , zero , zero );
 
-   auto m1 = std::make_tuple( t1, t2, t1 );
-*/
+   auto v = tup( 0.0 , 0.0 );
 
-   std::vector<double>  xs(1000);
-   for ( auto& x : xs ) x = foo();
-
-   auto m = std::make_tuple( std::make_tuple( ni::one, 0.6 )
-                           , std::make_tuple( ni::zero, 0.3 ) );
-   auto v = std::make_tuple( 1.0 , 1.0 );
-   
-   for ( auto const & x : xs ) v = m*v + std::tie( x , ni::zero );
-   std::cout << m*v << std::endl;
-   printf( "%f %f\n", std::get<0>(v), std::get<1>(v) );
-/*
-   std::cout << std::boolalpha << "---------------------------" << std::endl;
-   std::cout << is_tuple<decltype(t1)>::value << std::endl;
-   std::cout << is_tuple<decltype(t2)>::value << std::endl;
-   std::cout << is_tuple<decltype(m1)>::value << std::endl;
-   std::cout << is_tuprix<decltype(m1)>::value << std::endl;
-*/
+   for ( auto const & x : dirac(10) )
+   {
+      std::cout << std::get<0>(v) << std::endl;
+      v = a*v + b*std::tie( x , zero );
+   }
 }
 
 
