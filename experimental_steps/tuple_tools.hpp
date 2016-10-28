@@ -230,7 +230,7 @@ auto head( std::tuple<Ts...> const & t )
 }
 
 template <  typename... Ts , std::size_t... Ns >
-auto tail_impl( std::index_sequence<Ns...> , std::tuple<Ts...> t )
+auto tail_impl( std::index_sequence<Ns...> , std::tuple<Ts...> const & t )
 {
    return  std::forward_as_tuple( std::get<Ns+1u>(t)... );
 }
