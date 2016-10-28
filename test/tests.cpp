@@ -154,12 +154,39 @@ void test_delayed_sequences()
 }
 
 
+
+void test_feedback_expressions()
+{
+   using namespace flowz;
+
+   auto integrator1 = compile( ~(_1[_1] + _2) );
+
+   BOOST_TEST( std::make_tuple(1337)       == integrator1(1337) );
+   BOOST_TEST( std::make_tuple(1337+42)    == integrator1(42) );
+   BOOST_TEST( std::make_tuple(1337+42+17) == integrator1(17) );
+
+   auto integrator2 = compile( ~(_1[_1] + _2 |= _1) );
+
+   BOOST_TEST( std::make_tuple(1337)       == integrator2(1337) );
+   BOOST_TEST( std::make_tuple(1337+42)    == integrator2(42) );
+   BOOST_TEST( std::make_tuple(1337+42+17) == integrator2(17) );
+
+   auto integrator3 = compile( ~(_1 |= _1[_1] + _2) );
+
+   BOOST_TEST( std::make_tuple(1337)       == integrator3(1337) );
+   BOOST_TEST( std::make_tuple(1337+42)    == integrator3(42) );
+   BOOST_TEST( std::make_tuple(1337+42+17) == integrator3(17) );
+}
+
+
+
 int main()
 {
    test_unary_to_binary();
    test_wires_around_boxes();
    test_simple_expressions();
    test_delayed_sequences();
+   test_feedback_expressions();
 
    return boost::report_errors();
 }

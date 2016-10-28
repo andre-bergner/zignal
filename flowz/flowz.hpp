@@ -65,6 +65,13 @@ namespace building_blocks
    // definition of the building blocks of the language
    //  ---------------------------------------------------------------------------------------------
 
+   template< typename X >
+   auto make_terminal( X x )
+   {
+      return  make_expr<tag::terminal,copy_domain>(x);
+   }
+
+
    template < typename I >  struct placeholder       { using arity = I; };
    template < typename T >  struct placeholder_arity { using type = typename T::arity; };
 
@@ -94,6 +101,8 @@ namespace building_blocks
    auto make_binary_feedback( LeftExpr const & l , RightExpr const & r )
    {  return make_expr<building_blocks::binary_feedback_tag>( l, r );  }
 }
+
+using building_blocks :: make_terminal;
 
 using building_blocks :: placeholder;
 using building_blocks :: placeholder_arity;
@@ -816,7 +825,16 @@ namespace transforms
          auto node_state  = deep_tie(std::get<0>(std::get<1>(state)));
          auto left_state  = deep_tie(std::get<1>(std::get<1>(state)));
          auto right_state = deep_tie(std::get<2>(std::get<1>(state)));
-
+/*
+         std::cout << "--- state triple ---" << std::endl;
+         print_state(std::get<1>(state));
+         std::cout << "--- node_state ---" << std::endl;
+         print_state(node_state);
+         std::cout << "--- left_state ---" << std::endl;
+         print_state(left_state);
+         std::cout << "--- right_state ---" << std::endl;
+         print_state(right_state);
+*/
          //static_assert( std::tuple_size<Input>::value == std::tuple_size<decltype(in_state)>::value );
 
          auto left_delayed_input = tuple_take<input_arity_t<LeftExpr>::value>(in_state);
@@ -887,17 +905,28 @@ namespace transforms
          auto node_state  = deep_tie(std::get<0>(std::get<1>(state)));
          auto left_state  = deep_tie(std::get<1>(std::get<1>(state)));
          auto right_state = deep_tie(std::get<2>(std::get<1>(state)));
-
+/*
+         std::cout << "--- bf state triple ---" << std::endl;
+         print_state(std::get<1>(state));
+         std::cout << "--- bf node_state ---" << std::endl;
+         print_state(node_state);
+         std::cout << "--- bf left_state ---" << std::endl;
+         print_state(left_state);
+         std::cout << "--- bf right_state ---" << std::endl;
+         print_state(right_state);
+*/
          auto future_input = std::tuple_cat
                            ( repeat_t<output_arity_t<LeftExpr>::value, bottom_type>{}
-                           , tuple_drop< input_arity_t<LeftExpr>::value-output_arity_t<RightExpr>::value >(input) );
-                          // TODO min( 0 , drop_value )
+                           //, tuple_drop< input_arity_t<LeftExpr>::value-output_arity_t<RightExpr>::value >(input) );
+                           , tuple_drop< std::min(0,input_arity_t<LeftExpr>::value-output_arity_t<RightExpr>::value) >(input) );
+                           // TODO min( 0 , drop_value )
          auto left_delayed_input = std::tuple_cat
-               ( node_state , tuple_drop< input_arity_t<LeftExpr>::value-output_arity_t<RightExpr>::value >(in_state) );
+               //( node_state , tuple_drop< input_arity_t<LeftExpr>::value-output_arity_t<RightExpr>::value >(in_state) );
+               ( node_state , tuple_drop< std::min(0,input_arity_t<LeftExpr>::value-output_arity_t<RightExpr>::value) >(in_state) );
 
          auto result =
             flatten_tuple( std::make_tuple(
-               e( r, 0, ( current_input = future_input , delayed_input = std::tie(left_delayed_input,left_state) ))
+               e( r, 0, ( current_input = future_input , delayed_input = std::tie(left_delayed_input,right_state) ))
             ));
 
          auto promise_input = std::tuple_cat( result, tuple_take< input_arity_t<LeftExpr>::value-output_arity_t<RightExpr>::value >(input) );
@@ -1085,11 +1114,16 @@ auto compile = []( auto expr_ )
 
    transforms :: make_canonical  canonize;
 
+   //auto expr = expr_;
+   //auto expr = add_front_panel(expr_);
+   //auto expr = canonize( expr_ );
    auto expr = canonize( add_front_panel(expr_) );
    using expr_t = decltype(expr);
 
    auto builder = build_state< to_array_tuple<float>::apply >{};
    using state_t = decltype( builder(expr) );
+   //proto::display_expr(expr);
+   //print_state(state_t{});
 
    return stateful_lambda< expr_t, state_t, arity_t::value>{ expr };
 };
