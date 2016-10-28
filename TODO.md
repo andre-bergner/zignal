@@ -1,6 +1,15 @@
 # todo
 
+* demos:
+  * moog filter --> needs tanh
+  * hilbert transformer
+  * multi mode state variable filter
+
+* use variable templates for compile time indexing
+  _1<-2>   input argument one delayed by 2
+
 * unary-to-binary-feedback
+  - bug ~(_1[_1]+_2 |= _1) compiles, but does not run
   - bug in predicate when feedback path is thinning ?, e.g.  _1 + _2 |= _1[_1] |= _1,_1
   - handle nested feedback: idea transform on the way up from the leafs instead of on the way down
     current problem:
@@ -23,11 +32,20 @@
 * canonicalization
   - unary to binary feedback expressions
   - handle doublicated states/expressions that can be shared, for instance
-    ~( _1[_2] + _2 ) |= _1[_2]   -->  ( _1 + _2 ) ~~ _1[_2] |= _1 ???
+    ~( _1[_2] + _2 ) |= _1[_2]   -->  ( _1 + _2 ) ≈ _1[_2] |= _1 ???
 
-* file proto::lit bug
+* computing partial derivatives along the flow graph (a.k.a back-propagation)
+  * http://colah.github.io/posts/2015-08-Backprop/
+  * useful to implement neural networks within flowz
+
+* migrate to nonius from google benchmark
+* adapt tuple tricks from hana or switch to hana
+* use more constexpr
+* file proto::lit bug (you past me idiot didn't write down what the bug is!!!)
 * benchmarks: unroll1,2,3 , long filter-chain
   * document clang vs gcc
+
+* application: sorting network.
 
 * analyze memory transfer, play with loop unrolling by 3, ...
 
@@ -60,3 +78,5 @@
 * look into:
     * https://en.wikipedia.org/wiki/Hardware_description_language
     * http://visualhdl.sysprogs.org/tutorial/04-advanced-templates.php
+    * other work: Kronos a vectorizing compiler for music
+      https://www.researchgate.net/publication/228369284_Kronos-a_vectorizing_compiler_for_music_dsp
