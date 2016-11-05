@@ -179,6 +179,59 @@ void test_feedback_expressions()
 }
 
 
+#include <complex>
+
+void test_result_type_transform()
+{
+   using namespace flowz;
+   using namespace flowz::transforms;
+
+   using std::tuple;
+   using cplx = std::complex<float>;
+
+   ResultType    r;
+   tuple<float>  x;
+
+   auto expect_type = [r,x]( auto expected, auto expression )
+   {
+      return std::is_same< decltype(expected) , decltype( r(expression,x) ) >::value;
+   };
+
+   BOOST_TEST(expect_type( float{}         , _1       ));    // float ?   should be tuple<float>
+   BOOST_TEST(expect_type( double{}        , _1 * 1.0 ));    // double ?  should be tuple<double>
+
+   BOOST_TEST(expect_type( tuple<float>{}  , _1 |= _1 ));
+   BOOST_TEST(expect_type( tuple<double>{} , _1 * 1.0 |= _1 ));
+   BOOST_TEST(expect_type( tuple<double>{} , _1 |= 1.0 * _1 ));
+
+   BOOST_TEST(expect_type( tuple<cplx>{}   , _1 |= cplx{1,0} * _1 ));
+   BOOST_TEST(expect_type( tuple<cplx>{}   , 2*_1 |= _1*cplx{1,0} |= _1 ));
+
+   BOOST_TEST(expect_type( tuple<float,float>{}   , (_1,_1) ));
+   BOOST_TEST(expect_type( tuple<float,double>{}  , (_1,_1*1.0) ));
+   BOOST_TEST(expect_type( tuple<double,float>{}  , (_1*1.0,_1) ));
+   BOOST_TEST(expect_type( tuple<double,double>{} , (1.0*_1,1.0*_1) ));
+   BOOST_TEST(expect_type( tuple<float,double>{}  , (_1*1.0,_1) |= (_2,_1) ));
+   BOOST_TEST(expect_type( tuple<float,double>{}  , (_1,1.0*_1) |= (_1|_1) ));
+
+   BOOST_TEST(expect_type( float{}         , _1[_1] ));         // float ?   should be tuple<float>
+   BOOST_TEST(expect_type( tuple<float>{}  , _1 |= _1[_1] ));
+   BOOST_TEST(expect_type( tuple<double>{} , (_1[_1],1.0*_1) |= _2[_1] ));
+
+   BOOST_TEST(expect_type( tuple<float>{}   , ~( _1[_1] + _2 ) ));
+   BOOST_TEST(expect_type( tuple<double>{}  , ~( 1.0*_1[_1] + _2 ) ));
+   BOOST_TEST(expect_type( tuple<double>{}  , ~( _1[_1] + 1.0*_2 ) ));
+   BOOST_TEST(expect_type( tuple<double>{}  , ~( _1[_1] + 1.0 ) ));
+
+   make_canonical  c;
+
+   BOOST_TEST(expect_type( tuple<float>{}   , c( ~( _1[_1] + _2 ) )));
+   BOOST_TEST(expect_type( tuple<double>{}  , c( ~( 1.0*_1[_1] + _2 ) )));
+   BOOST_TEST(expect_type( tuple<double>{}  , c( ~( _1[_1] + 1.0*_2 ) )));
+   BOOST_TEST(expect_type( tuple<double>{}  , c( ~( _1[_1] + 1.0 ) )));
+}
+
+
 
 int main()
 {
@@ -187,6 +240,7 @@ int main()
    test_simple_expressions();
    test_delayed_sequences();
    test_feedback_expressions();
+   test_result_type_transform();
 
    return boost::report_errors();
 }

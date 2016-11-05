@@ -9,7 +9,6 @@
   _1<-2>   input argument one delayed by 2
 
 * unary-to-binary-feedback
-  - bug ~(_1[_1]+_2 |= _1) compiles, but does not run
   - bug in predicate when feedback path is thinning ?, e.g.  _1 + _2 |= _1[_1] |= _1,_1
   - handle nested feedback: idea transform on the way up from the leafs instead of on the way down
     current problem:

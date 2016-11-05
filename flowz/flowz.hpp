@@ -434,9 +434,9 @@ namespace transforms
    struct tuple_drop_ : callable_decltype
    {
       template< typename Drop , typename Tuple >
-      decltype(auto) operator()( Drop , Tuple const & t ) const
+      decltype(auto) operator()( Drop , Tuple&& t ) const
       {
-         return tuple_drop<Drop::value>(t);
+         return tuple_drop<Drop::value>( std::forward<Tuple>(t) );
       }
    };
 
@@ -505,6 +505,149 @@ namespace transforms
    template < typename Expr >
    using min_input_delays_t = decltype( min_input_delays{}( std::declval<Expr>() ) );
 
+
+
+
+   // -------------------------------------------------------------------------------------------
+   // state and wire related tuple tools -- type per tuple
+   // -------------------------------------------------------------------------------------------
+
+   // ResultType computes the result type for a given expression and a given input.
+
+   // Handling of feedback.
+   //
+   //    Consider the following exmaple:
+   //
+   //    ~(_1[_1] + _2 + _3)   with typeof(_2) == float and typeof(_3) == complex<double>
+   //                          --> What should be the type of _1 to be used for the delay?
+   //
+   //    Problem:  _1[_1] + _2 + _3   needs all three input types to determine its output type
+   //                                 but the output type depends on expressions result and so
+   //                                 depends the input type --> cyclic dependency
+   //    Solution:
+   //
+   //      assign temporary type 'absorber' to _1.
+   //
+   //      absorber is special type that returns for all binary operations always the other type.
+   //
+   //      unary-op absorber   → absorber
+   //      binary-op absorber T → T
+
+
+   struct absorber {};
+
+   using left_binary_absorber  = binary_expr< _ , terminal<absorber> , _ >;
+   using right_binary_absorber = binary_expr< _ , _ , terminal<absorber> >;
+
+   template <typename Transform>
+   using absorb_left = when< left_binary_absorber, Transform(_right) >;
+
+   template <typename Transform>
+   using absorb_right = when< right_binary_absorber, Transform(_left) >;
+
+
+   struct get_fn : callable_decltype
+   {
+      template < typename Tuple, int N >
+      auto operator()( Tuple&& t, mpl::int_<N> ) const
+      {
+         return std::get<N-1>(t);
+      }
+   };
+
+   struct make_flat_tuple : callable_decltype
+   {
+      template < typename T >
+      auto operator()( T&& t ) const
+      {
+         return flatten_tuple( std::forward_as_tuple(t) );
+      }
+   };
+
+   struct repeat_fn : callable_decltype
+   {
+      template < typename N, typename T >
+      auto operator()( N, T&& ) const
+      {
+         return repeat_t< N::value, std::decay_t<T> >{};
+      }
+   };
+
+   struct make_terminal : callable_decltype
+   {
+      template < typename T >
+      auto operator()( T&& x ) const
+      {
+         return proto::make_expr<proto::tag::terminal>(x);
+      }
+   };
+
+   struct ResultType : or_
+   <  or_< absorb_left<ResultType>, absorb_right<ResultType> >
+   ,  when
+      <  delayed_placeholder<>
+      ,  get_fn( _state , placeholder_arity<_value(_left)>() )
+      >
+   ,  when
+      <  terminal< placeholder<_> >
+      ,  get_fn( _state , placeholder_arity<_value>() )
+      >
+   ,  when
+      <  terminal<_>
+      ,  _value
+      >
+   ,  when
+      <  binary_feedback_operator
+         // we have to call this transform twice
+         // 1. substitutes all that depend on the recursion with the absorber type
+         // 2. removes all absorbers by merging them with their respecitve operations (absorb left/right)
+         // TODO static_assert that result must not contain any leftover absorbers,
+         //      e.g. the expression  ~(_1[_1]) will return absorber due to lacking information about
+         //           the type inside the recursion cycle. User has to resolve explicitly with
+         //           ~(_1[_1] * 1.f) for instance
+      ,  make_flat_tuple( ResultType(
+            ResultType( _right, tuple_cat_fn( repeat_fn(output_arity(_left), make_terminal(absorber())), _state ))
+         ))
+      >
+   ,  when
+      <  feedback_operator   // here same comment as for binary_feedback_operator applies
+      ,  make_flat_tuple( ResultType(
+            ResultType( _child, tuple_cat_fn( repeat_fn(output_arity(_child), make_terminal(absorber())), _state ))
+         ))
+      >
+   ,  when
+      <  sequence_operator
+      ,  tuple_cat_fn(
+            make_flat_tuple(
+               ResultType( _right, tuple_take_( input_arity(_right), make_flat_tuple(ResultType(_left)) ) )
+            )
+         ,  tuple_drop_( input_arity(_right), make_flat_tuple(ResultType(_left)) )
+         )
+      >
+   ,  when
+      <  parallel_operator
+      ,  tuple_cat_fn( make_flat_tuple(ResultType( _left, tuple_take_(input_arity(_left), _state) ) )
+                     , make_flat_tuple(ResultType( _right, tuple_drop_(input_arity(_left), _state) ) )
+                     )
+      >
+   ,  when
+      <  channel_operator
+      ,  tuple_cat_fn( make_flat_tuple(ResultType(_left))
+                     , make_flat_tuple(ResultType(_right))
+                     )
+      >
+   ,  when
+      <  _
+      ,  _default<ResultType>
+      >
+   >
+   {};
+
+
+
+   // -------------------------------------------------------------------------------------------
+   //
+   // -------------------------------------------------------------------------------------------
 
 
    template < bool... bs >
