@@ -1,5 +1,8 @@
 #pragma once
 
+#include <iostream>
+#include <cstdlib>
+#include <string>
 #include <cxxabi.h>
 
 inline std::string demangle(const char* name)
