@@ -1,68 +1,8 @@
-// compile time parameter compute DAGs
-// Problem:
-//  * given set of parameters that depend on each other
-//  * changing one or more of the parameter the depedent ones need to be recomputed
-//  * don't recompute all, usually done by hand, error prone
-//  * unstable under refactoring
-//  * hard to unit test → all possible set update combinations need to be tested
-
-// Example:
-
-struct Effect {
-   
-   float  a;
-   float  b;
-   float  a_1;    // depends on { a }
-   float  c;      // depends on { a_1, b }
-   float  d;      // depends on { b }
-
-   void set_a(float a_)
-   {
-      a = a_;
-      a_1 = 1.f / a;
-      compute_c();
-   }
-
-   void set_b(float b_)
-   {
-      b = b_;
-      compute_c();
-      compute_d();
-   }
-
-   void compute_c()
-   {
-      c = (b + 1.f) * a_1;
-   }
-
-   void compute_d()
-   {
-      d = b*b;
-   }
-
-};
-
-
-/*
-// ideal version:
-// not possible at compile time: no way for dependee to automatically dependers and trigger their recomputation
-struct Effect2 {
-   
-   property<float>  a;
-   property<float>  b;
-   property<float>  a_1 = 1.f / a;
-   property<float>  c = (b + 1.f) * a_1;
-   property<float>  d = b*b;
-
-};
-*/
-
-
-
-
-
-
-
+// TODO
+// • check for valid expressions
+// • detect source parameters
+// • allow set only for sources
+// • recursively update all dependees
 
 
 
@@ -70,10 +10,10 @@ struct Effect2 {
 // PARAMETER DAG -- build compile time description of dependencies using boost.proto 
 // ------------------------------------------------------------------------------------------------
 
-
 #include "demangle.h"
 #include "meta.h"
 #include <iostream>
+#include <array>
 #include <boost/proto/core.hpp>
 #include <boost/proto/transform.hpp>
 #include <boost/proto/debug.hpp>
@@ -85,7 +25,7 @@ namespace building_blocks
    using namespace boost::proto;
 
    //  ---------------------------------------------------------------------------------------------
-   // copy_domain -- all flowz expressions should be hold by value to avoid dangling references
+   // copy_domain -- all expressions should be hold by value to avoid dangling references
    //  ---------------------------------------------------------------------------------------------
 
    template< typename E >
@@ -120,12 +60,12 @@ namespace building_blocks
    {
       Value value = {};
 
-      //parameter(Value v) : value{v} { std::cout << "ctor" << std::endl; }
-      //parameter() { std::cout << "ctor" << std::endl; }
-      //parameter(parameter const& t) : value(t.value) { std::cout << "copy" << std::endl; }
-      //parameter(parameter&&) { std::cout << "move" << std::endl; }
-      //template <typename Any>
-      //operator Value() const { return value; }
+      // parameter(Value v) : value{v} { std::cout << "ctor" << std::endl; }
+      // parameter() { std::cout << "ctor" << std::endl; }
+      // parameter(parameter const& t) : value(t.value) { std::cout << "copy" << std::endl; }
+      // parameter(parameter&&) { std::cout << "move" << std::endl; }
+      // template <typename Any>
+      // operator Value() const { return value; }
    };
    
 
@@ -177,18 +117,31 @@ namespace building_blocks
    >
    {};
 
+   template <typename Expr>
+   using collect_dependendencies_t
+      = meta::invoke_result_t<collect_dependendencies, Expr>;
+
+
    struct rhs_dependendencies : or_
    <  when< assign< terminal<parameter<_,_>>,_>, collect_dependendencies(_right) >
    ,  otherwise< meta::type_set<>() >
    >
    {};
 
+
    // ---------------------------------------------------------------------------------------------
+   // Given a depedent type (Dependee), a set of values that influence that one (Dependers),
+   // and a AdjacencyMap (that maps ) insert_dependee will update the AdjacencyMap for all
+   // influencing values with the given Dependee.
+   // pseudo code:  for (D : Dependers) AdjacencyMap[D].insert( Dependee )
+   // E.g.
+   //     y = 3*x + z  // Dependee: y, Dependers: {x,z}
+   //     updates: adj[x].insert(y)
+   //              adj[z].insert(y)
+   // insert_dependee returns a new AdjacencyMap
 
-
-   // for (D : DependencySet) AdjacencyMap[D].insert( Dependee )
-   template <typename Dependee, typename DependencySet, typename AdjacencyMap = meta::type_map<> >
-   struct collect_dependees
+   template <typename Dependee, typename Dependers, typename AdjacencyMap = meta::type_map<> >
+   struct insert_dependee
    {
       template <typename Map, typename Key>
       using inserter_dependee_t = meta::insert_t< meta::type_at_t<Map,Key,meta::type_set<>>, Dependee >;
@@ -196,11 +149,11 @@ namespace building_blocks
       template <typename Map, typename Key>
       using inserter_t = meta::force_insert_t< Map, Key, inserter_dependee_t<Map,Key> >;
 
-      using type = meta::fold_t< inserter_t, AdjacencyMap, DependencySet >;
+      using type = meta::fold_t< inserter_t, AdjacencyMap, Dependers >;
    };
 
-   template <typename Dependee, typename DependencySet, typename AdjacencyMap = meta::type_map<> >
-   using collect_dependees_t = typename collect_dependees<Dependee, DependencySet, AdjacencyMap>::type;
+   template <typename Dependee, typename Dependers, typename AdjacencyMap = meta::type_map<> >
+   using insert_dependee_t = typename insert_dependee<Dependee, Dependers, AdjacencyMap>::type;
 
 
 
@@ -209,45 +162,34 @@ namespace building_blocks
    // expression  ( prop[n] = f(prop[..]), adj_map ) -> adj_map
    //
 
-   struct insert_dependendencies : callable_decltype
+   struct insert_dependendencies_impl : callable_decltype
    {
       template <typename Lhs, typename Rhs, typename AdjacencyMap>
-      auto operator()( Lhs&&, Rhs&& rhs, AdjacencyMap&& ) const
+      auto operator()( Lhs&&, Rhs&&, AdjacencyMap&& ) const
       {
-         collect_dependendencies  cd;
-         return collect_dependees_t< std::decay_t<Lhs>, decltype(cd(rhs)), std::decay_t<AdjacencyMap> >{};
+         return insert_dependee_t< std::decay_t<Lhs>, collect_dependendencies_t<Rhs>
+                                 , std::decay_t<AdjacencyMap> >{};
       }
 
    };
 
-   struct insert_dependendencies_trafo : or_
-   <  when< assign< terminal<parameter<_,_>>,_>, insert_dependendencies(_value(_left),_right,_state) >
+   struct insert_dependendencies : or_
+   <  when< assign< terminal<parameter<_,_>> , _ >
+          , insert_dependendencies_impl(_value(_left), _right, _state)
+          >
    ,  otherwise< _state >
    >
    {};
 
-
-
    template <typename AdjacencyMap, typename Expression>
-   struct insert_dependendencies_trafo_result_type
-   {
-      using type = decltype( std::declval<insert_dependendencies_trafo>()
-                               ( std::declval<Expression>(), std::declval<AdjacencyMap>() )
-                           );
-   };
-
-   template <typename AdjacencyMap, typename Expression>
-   using insert_dependendencies_trafo_t
-      = typename insert_dependendencies_trafo_result_type<AdjacencyMap,Expression>::type;
+   using insert_dependendencies_t
+      = meta::invoke_result_t<insert_dependendencies, Expression, AdjacencyMap>;
 
 
 
 
 
-
-
-
-   struct insert_expression : callable_decltype
+   struct insert_expression_impl : callable_decltype
    {
       template <typename Lhs, typename Rhs, typename ExpressionsMap>
       auto operator()( Lhs&&, Rhs&& rhs, ExpressionsMap&& ) const
@@ -256,34 +198,24 @@ namespace building_blocks
          using expr_t = std::decay_t<Rhs>;
          return meta::insert_t< std::decay_t<ExpressionsMap>, key_t, expr_t >{};
       }
-
    };
 
 
-   // TODO: almast same structure as insert_dependendencies_trafo, options:
+   // TODO: almast same structure as insert_dependendencies, options:
    //  * return tuple (left,right)  or empty
    //  * make called transform a template parameter
-   struct build_expression_map_trafo : or_
-   <  when< assign< terminal<parameter<_,_>>,_>, insert_expression(_value(_left),_right,_state) >
+   struct build_expression_map : or_
+   <  when< assign< terminal<parameter<_,_>> , _ >
+          , insert_expression_impl(_value(_left), _right, _state)
+          >
    ,  otherwise< _state >
    >
    {};
 
 
-
-   // TODO: almast same structure as insert_dependendencies_trafo_result_type
-   //       --> make this a lifter (lift into declval)
    template <typename Map, typename Expression>
-   struct build_expression_map_trafo_result_type
-   {
-      using type = decltype( std::declval<build_expression_map_trafo>()
-                               ( std::declval<Expression>(), std::declval<Map>() )
-                           );
-   };
-
-   template <typename Map, typename Expression>
-   using build_expression_map_trafo_t
-      = typename build_expression_map_trafo_result_type<Map,Expression>::type;
+   using build_expression_map_t
+      = meta::invoke_result_t<build_expression_map, Expression, Map>;
 
 
 
@@ -341,26 +273,96 @@ namespace building_blocks
    };
 
 
+   struct dependee : or_
+   <  when< assign< terminal<parameter<_,_>>,_>, extract_parameter_trafo(_left) >
+   ,  otherwise< meta::type_set<>() >
+   >
+   {};
 
+   struct just_dependee : or_
+   <  when< assign< terminal<parameter<_,_>>,_>, _left > >
+   {};
+
+
+
+   template <typename Expr>
+   using dependee_t = meta::invoke_result_t<dependee, Expr>;
 }
 
+
+
 using building_blocks::parameter;
-//using building_blocks::term_type;
 using building_blocks::make_terminal;
 using building_blocks::get_value;
 using building_blocks::get_parameter;
 using building_blocks::eval;
 using building_blocks::collect_dependendencies;
 using building_blocks::rhs_dependendencies;
-using building_blocks::collect_dependees_t;
-using building_blocks::insert_dependendencies_trafo_t;
-using building_blocks::build_expression_map_trafo_t;
+using building_blocks::insert_dependee_t;
+using building_blocks::insert_dependendencies_t;
+using building_blocks::build_expression_map_t;
+using building_blocks::dependee_t;
+using building_blocks::just_dependee;
 
 
 
 #define PARAMETER(TYPE,NAME,VALUE)  \
    struct NAME##_t {};  \
    decltype(make_terminal(parameter<NAME##_t,TYPE>{}))  NAME = make_terminal(parameter<NAME##_t,TYPE>{VALUE});
+
+
+
+template <typename Expressions>
+struct dependees;
+
+template <typename Expressions>
+using dependees_t = typename dependees<Expressions>::type;
+
+template <typename... Expressions>
+struct dependees<std::tuple<Expressions...>>
+{
+   using type = meta::type_list<std::decay_t<dependee_t<Expressions>>...>;
+};
+
+
+
+template <typename AdjacencyMap, typename Expressions>
+struct dependency_manager
+{
+   using map_t = AdjacencyMap;
+   using exprs_t = Expressions;
+
+   exprs_t  exprs;
+
+   template <typename Terminal, typename Value>
+   void set(Terminal term, Value x)
+   {
+      eval e;
+      using key_t = std::decay_t<decltype(get_parameter(term))>;
+      meta::type_at_t<map_t, key_t> ex;
+      using keys_t = typename dependees<exprs_t>::type;
+      constexpr size_t n = meta::index_of_v<dependees_t<exprs_t>, key_t>;
+
+      // set value at n
+      //    assign_to_value
+      // update all dependees recursively
+
+      auto const& expr = std::get<n>(exprs);
+      //std::cout << "result: " << e( expr ) << std::endl;
+   }
+
+
+   template <typename Terminal>
+   auto get(Terminal term)
+   {
+      just_dependee  e;
+      using key_t = std::decay_t<decltype(get_parameter(term))>;
+      using keys_t = typename dependees<exprs_t>::type;
+      constexpr size_t n = meta::index_of_v<typename dependees<exprs_t>::type, key_t>;
+      auto const& expr = std::get<n>(exprs);
+      return get_value(e( expr ));
+   }
+};
 
 
 // expressions must have form
@@ -371,142 +373,30 @@ using building_blocks::build_expression_map_trafo_t;
 // 1. left side is exactyl one leaf node of type parameter<_>
 // 2. each parameter appears exacly once on left side
 //
+// Input constraints:
+// • parameter
+// • parameter = expr( w/o =, other parameter)
 //
-/*
-template <typename T=float>
-struct mapping_dag
-{
-   template <typename... Expressions>
-   mapping_dag( Expressions... es )
-   {
-      // Input constraints:
-      // • parameter
-      // • parameter = expr( w/o =, other parameter)
-
-      eval  e;
-      collect_dependendencies  c;
-      //rhs_dependendencies  rc;
-
-      [](...){}( ( std::cout << e(es) << std::endl
-                 , std::cout << "dependencies: " << type_name(c(es)) << std::endl
-                 //, std::cout << "dependencies: " << type_name(rc(es)) << std::endl
-                 //, boost::proto::display_expr(es)
-                 , std::cout << "\n--------------------------" << std::endl
-                 , 0
-                 )...
-               );
-
-      using dependency_map = meta::fold_t< insert_dependendencies_trafo_t, meta::type_map<>, meta::type_list<Expressions...> >;
-
-      std::cout << type_name<dependency_map>() << std::endl;
-
-   }
-
-   template <typename Tag>
-   void set( term_type<Tag,T> p, T value )
-   {
-      //params[&p](value);  // sets the value by triggering call --> cascade of potential recomputations
-   }
-
-};
-*/
-
-
-
-
-
-template <typename AdjacencyMap, typename Expressions>
-struct dependency_manager
-{
-   using map_t = AdjacencyMap;
-   using exprs_t = Expressions;
-
-   template <typename Terminal, typename Value>
-   void set(Terminal term, Value x)
-   {
-      eval e;
-      using tag_t = std::decay_t<decltype(get_parameter(term))>;
-      meta::type_at_t<exprs_t, tag_t> ex;
-      std::cout << "result: " << e( ex ) << std::endl;
-   }
-
-   exprs_t  exprs;
-   map_t    map;
-};
-
-
 
 
 template <typename... Expressions>
 auto make_mapping_dag( Expressions&&... es )
 {
+   // static_assert( is_valid_list_of_expressions_v<Expressions...> );
    using expr_list_t = meta::type_list<Expressions...>;
-   using dependency_map_t = meta::fold_t< insert_dependendencies_trafo_t, meta::type_map<>, expr_list_t >;
-   using expression_map_t = meta::fold_t< build_expression_map_trafo_t, meta::type_map<>, expr_list_t >;
+   using dependency_map_t = meta::fold_t< insert_dependendencies_t, meta::type_map<>, expr_list_t >;
 
    eval  e;
    [](...){}( (e(es),0)... );
 
-
-   return dependency_manager<dependency_map_t, expression_map_t>{/*es...*/};
+   using expression_t = std::tuple<Expressions... >;
+   return dependency_manager<dependency_map_t, expression_t>{ std::forward_as_tuple(es...) };
 }
 
 
-
-
-/*
-
-struct Effect3 {
-
-   //struct a_t {}; parameter<a_t,float> a = 1337;
-   
-   PARAMETER( float, a, 1337 );
-   PARAMETER( float, b, 47 );
-   PARAMETER( float, c, 0 );
-   PARAMETER( float, d, 0 );
-   PARAMETER( float, a_1, 0 );
-   PARAMETER( std::string, name, "hello" );
-
-   mapping_dag<float> dag
-   {  a
-   ,  b
-   ,  a_1  = 1.f / a
-   ,  c    = (b + 1.f) * a_1
-   ,  d    = b*b
-   ,  name = name + " world: " + std::to_string(get_value(a))
-   };
-
-   //void set_a(float a_) { dep.set(a,a_); assert( new value of dependent values) }
-   //void get_c() { dep.get(c); }
-
-   using t = collect_dependees_t< c_t, meta::type_set<a_t,b_t> >;
-
-};
-*/
-
-template <typename... Terminals>
-void test_set_terminal( Terminals&&... ts )
-{
-   [](...){}( (get_value(ts) = 13 ,0)... );
-}
 
 int main()
 {
-   /*
-   Effect3 ef3;
-   std::cout << get_value(ef3.a_1) << std::endl;
-   std::cout << get_value(ef3.c) << std::endl;
-   std::cout << get_value(ef3.d) << std::endl;
-   std::cout << get_value(ef3.name) << std::endl;
-
-   std::cout << type_name<Effect3::t>() << std::endl;
-   std::cout << std::boolalpha;
-   std::cout << meta::contains_v< int,   meta::type_list<int,char> > << std::endl;
-   std::cout << meta::contains_v< float, meta::type_list<int,char> > << std::endl;
-   */
-
-
-
    PARAMETER( float, a, 1337 );
    PARAMETER( float, b, 47 );
    PARAMETER( float, c, 0 );
@@ -514,16 +404,8 @@ int main()
    PARAMETER( float, a_1, 0 );
    PARAMETER( std::string, name, "hello" );
 
-   //test_set_terminal(a,b);
-/*
-   std::cout << type_name(a) << std::endl;
-*/
    std::cout << "----------------------------------" << std::endl;
 
-   //std::cout << "extract_value &: " << &get_value(a)   << "     value: " << get_value(a)   << std::endl;
-   //std::cout << "extract_value &: " << &get_value(b)   << "     value: " << get_value(b)   << std::endl;
-   //std::cout << "extract_value &: " << &get_value(a_1) << "     value: " << get_value(a_1) << std::endl;
-/*
    std::cout << get_value(a) << std::endl;
    std::cout << get_value(b) << std::endl;
    std::cout << get_value(a_1) << std::endl;
@@ -531,7 +413,7 @@ int main()
    std::cout << get_value(c) << std::endl;
    std::cout << get_value(d) << std::endl;
    std::cout << get_value(name) << std::endl;
-*/
+
    auto deps = make_mapping_dag
    (  a    //= 1337
    ,  b    //= 47
@@ -543,26 +425,14 @@ int main()
 
    std::cout << "----------------------------------" << std::endl;
 
-   //std::cout << "extract_value &: " << &get_value(a)   << "     value: " << get_value(a)   << std::endl;
-   //std::cout << "extract_value &: " << &get_value(b)   << "     value: " << get_value(b)   << std::endl;
-   //std::cout << "extract_value &: " << &get_value(a_1) << "     value: " << get_value(a_1) << std::endl;
-
-/*
    deps.set(a_1, 3);
 
-   std::cout << "----------------------------------" << std::endl;
-   std::cout << get_value(a) << std::endl;
-   std::cout << get_value(b) << std::endl;
-   std::cout << get_value(a_1) << std::endl;
-   std::cout << get_value(c) << std::endl;
-   std::cout << get_value(d) << std::endl;
-   std::cout << get_value(name) << std::endl;
-
-   //std::cout << "----------------------------------" << std::endl;
-   //std::cout << type_name(deps.map) << std::endl;
-   //std::cout << "----------------------------------" << std::endl;
-   //std::cout << type_name(deps.exprs) << std::endl;
-*/
+   //std::cout << deps.get(a) << std::endl;
+   //std::cout << deps.get(b) << std::endl;
+   std::cout << deps.get(a_1) << std::endl;
+   std::cout << deps.get(c) << std::endl;
+   std::cout << deps.get(d) << std::endl;
+   std::cout << deps.get(name) << std::endl;
 
 }
 
