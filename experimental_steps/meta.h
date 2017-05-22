@@ -101,6 +101,13 @@ namespace meta {
    using type_at_t = typename type_at<TypeContainer, Key, Default>::type;
 
 
+   template <typename TypeContainer, typename Key>
+   struct index_of;
+
+   template <typename TypeContainer, typename Key>
+   constexpr auto index_of_v = index_of<TypeContainer, Key>::value;
+
+
    template <template <typename...> class MetaFunction, typename Init, typename TypeContainer>
    struct fold;
 
@@ -162,6 +169,21 @@ namespace meta {
    {};
 
 
+   template <typename Value>
+   struct index_of<type_list<>, Value>
+   {
+      using fail = std::integral_constant<bool, !std::is_same<Value,Value>::value>;
+      static_assert(fail::value, "Value not found." );
+   };
+
+   template <typename Value, typename... Values>
+   struct index_of<type_list<Value, Values...>, Value>
+     : std::integral_constant< size_t, 0 >{};
+
+   template <typename Value, typename Value0, typename... Values>
+   struct index_of<type_list<Value0, Values...>, Value>
+     : std::integral_constant< size_t, 1 + index_of_v<type_list<Values...>, Value> > {};
+
 
    // ----------------------------------------------------------------------------------------------
    // Map Implementations
@@ -207,6 +229,38 @@ namespace meta {
    ,  type_at_t< type_map<Entries...>, Key, Default>
    >
    {};
+
+
+   template <typename Key>
+   struct index_of<type_map<>, Key>
+   {
+      using fail = std::integral_constant<bool, !std::is_same<Key,Key>::value>;
+      static_assert(fail::value, "Key not found." );
+   };
+
+   template <typename Key, typename Value, typename... Entries>
+   struct index_of<type_map<type_pair<Key,Value>, Entries...>, Key>
+     : std::integral_constant< size_t, 0 >{};
+
+   template <typename Key, typename Entry, typename... Entries>
+   struct index_of<type_map<Entry, Entries...>, Key>
+     : std::integral_constant< size_t, 1 + index_of_v<type_map<Entries...>, Key> > {};
+
+/*
+   template <typename Key>
+   struct index_of< type_map<>, Key > : std::integral_constant<size_t, 0>
+   {
+      // Error
+   };
+
+   template <typename Key, typename Entry, typename... Entries>
+   struct index_of< type_map<Entry, Entries...>, Key> : std::conditional
+   <  std::is_same< Key, get_key_t<Entry> >::value
+   ,  std::integral_constant<size_t, 0>
+   ,  std::integral_constant<size_t, 1 + index_of_v< type_map<Entries...>, Key>>
+   >
+   {};
+*/
 
 
 
@@ -269,10 +323,6 @@ namespace meta {
 
 
 
-
-
-
-
    // ----------------------------------------------------------------------------------------------
    // Algorithms
    // ----------------------------------------------------------------------------------------------
@@ -300,6 +350,16 @@ namespace meta {
    };
 
 
+
+
+
+
+   // ----------------------------------------------------------------------------------------------
+   // Invoke Return Type
+   // ----------------------------------------------------------------------------------------------
+
+   template <typename Function, typename... Args>
+   using invoke_result_t = decltype( std::declval<Function>()(std::declval<Args>()...) );
 
 }
 
