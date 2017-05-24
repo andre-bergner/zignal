@@ -1,7 +1,4 @@
 // TODO
-// • check for valid expressions
-//   • terminal
-//   • terminal = expression
 // • check for cycles
 // • detect source parameters
 // • allow set only for sources
@@ -410,7 +407,7 @@ struct dependency_manager
       constexpr size_t n = meta::index_of_v<keys_t, key_t>;
 
       auto const& expr = std::get<n>(exprs);
-      return get_value( expr );
+      return get_value(expr);
    }
 };
 
@@ -432,7 +429,10 @@ struct dependency_manager
 template <typename... Expressions>
 auto make_mapping_dag( Expressions&&... es )
 {
-   // static_assert( is_valid_list_of_expressions_v<Expressions...> );
+   static_assert( meta::fold_and_v< is_valid_expression_v<Expressions>...>
+                , "At least one expression malformed. "
+                  "Well formed expressions are either `param = expr` or just `param`."
+                );
    using expr_list_t = meta::type_list<Expressions...>;
    using dependency_map_t = meta::fold_t< insert_dependendencies_t, meta::type_map<>, expr_list_t >;
 
@@ -483,13 +483,5 @@ int main()
    std::cout << deps.get(c) << std::endl;
    std::cout << deps.get(d) << std::endl;
    std::cout << deps.get(name) << std::endl;
-
-
-   std::cout << std::boolalpha;
-   std::cout << is_valid_expression_v<decltype(a)> << std::endl;
-   std::cout << is_valid_expression_v<decltype(a = 3)> << std::endl;
-   std::cout << is_valid_expression_v<decltype(a = b*a)> << std::endl;
-   std::cout << is_valid_expression_v<decltype(a = b + a_1)> << std::endl;
-   std::cout << is_valid_expression_v<decltype(a + b = b + a_1)> << std::endl;
 }
 
