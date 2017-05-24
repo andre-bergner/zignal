@@ -1,8 +1,12 @@
 // TODO
 // • check for valid expressions
+//   • terminal
+//   • terminal = expression
+// • check for cycles
 // • detect source parameters
 // • allow set only for sources
 // • recursively update all dependees
+//   --> requires topological sort of nodes
 
 
 
@@ -82,6 +86,8 @@ namespace building_blocks
    };
 
 
+   using just_parameter   = terminal<parameter<_,_>>;
+   using assign_parameter = assign< terminal<parameter<_,_>> , _ >;
 
 
 
@@ -107,7 +113,7 @@ namespace building_blocks
 
 
    struct collect_dependendencies : or_
-   <  when< terminal<parameter<_,_>>, make_set(_value) >
+   <  when< just_parameter, make_set(_value) >
    ,  when< terminal<_>, meta::type_set<>() >
    ,  when
       <  binary_expr<_,_,_>
@@ -123,7 +129,7 @@ namespace building_blocks
 
 
    struct rhs_dependendencies : or_
-   <  when< assign< terminal<parameter<_,_>>,_>, collect_dependendencies(_right) >
+   <  when< assign_parameter, collect_dependendencies(_right) >
    ,  otherwise< meta::type_set<>() >
    >
    {};
@@ -174,7 +180,7 @@ namespace building_blocks
    };
 
    struct insert_dependendencies : or_
-   <  when< assign< terminal<parameter<_,_>> , _ >
+   <  when< assign< just_parameter , _ >
           , insert_dependendencies_impl(_value(_left), _right, _state)
           >
    ,  otherwise< _state >
@@ -205,7 +211,7 @@ namespace building_blocks
    //  * return tuple (left,right)  or empty
    //  * make called transform a template parameter
    struct build_expression_map : or_
-   <  when< assign< terminal<parameter<_,_>> , _ >
+   <  when< assign< just_parameter , _ >
           , insert_expression_impl(_value(_left), _right, _state)
           >
    ,  otherwise< _state >
@@ -221,12 +227,25 @@ namespace building_blocks
 
    // ---------------------------------------------------------------------------------------------
 
+
+   struct is_valid_expression : or_
+   <  when< assign_parameter, std::true_type() >
+   ,  when< just_parameter, std::true_type() >
+   ,  otherwise< std::false_type() >
+   >
+   {};
+
+   template <typename Expr>
+   constexpr bool is_valid_expression_v = meta::invoke_result_t<is_valid_expression, Expr>::value;
+
+
+
    struct assign_to_value;
    struct extract_value;
 
 
    struct eval : or_
-   <  when< terminal<parameter<_,_>>, extract_value(_value) >
+   <  when< just_parameter, extract_value(_value) >
    ,  when< assign<_,_> , assign_to_value(_left,_right) >
    ,  when< _ , _default<eval> >
    >
@@ -248,11 +267,15 @@ namespace building_blocks
       }
    };
 
-   struct extract_value_trafo : when< terminal<parameter<_,_>>, extract_value(_value) > {};
+   struct extract_value_trafo : or_
+   <  when< assign_parameter, extract_value_trafo(_left) >
+   ,  when< just_parameter, extract_value(_value) >
+   >
+   {};
 
    constexpr auto get_value  = building_blocks::extract_value_trafo{};
 
-   struct extract_parameter_trafo : when< terminal<parameter<_,_>>, _value > {};
+   struct extract_parameter_trafo : when< just_parameter, _value > {};
 
    constexpr auto get_parameter = building_blocks::extract_parameter_trafo{};
 
@@ -274,19 +297,26 @@ namespace building_blocks
 
 
    struct dependee : or_
-   <  when< assign< terminal<parameter<_,_>>,_>, extract_parameter_trafo(_left) >
+   <  when< assign_parameter, extract_parameter_trafo(_left) >
    ,  otherwise< meta::type_set<>() >
    >
    {};
 
-   struct just_dependee : or_
-   <  when< assign< terminal<parameter<_,_>>,_>, _left > >
-   {};
-
-
-
    template <typename Expr>
    using dependee_t = meta::invoke_result_t<dependee, Expr>;
+
+
+
+   struct parameter_node : or_
+   <  when< assign_parameter, parameter_node(_left) >
+   ,  when< just_parameter, _value >
+   ,  otherwise< meta::type_set<>() >    // TODO should be error
+   >
+   {};
+
+   template <typename Expr>
+   using parameter_node_t = meta::invoke_result_t<parameter_node, Expr>;
+
 }
 
 
@@ -302,7 +332,8 @@ using building_blocks::insert_dependee_t;
 using building_blocks::insert_dependendencies_t;
 using building_blocks::build_expression_map_t;
 using building_blocks::dependee_t;
-using building_blocks::just_dependee;
+using building_blocks::parameter_node_t;
+using building_blocks::is_valid_expression_v;
 
 
 
@@ -325,6 +356,24 @@ struct dependees<std::tuple<Expressions...>>
 };
 
 
+template <typename Expressions>
+struct parameters;
+
+template <typename Expressions>
+using parameters_t = typename parameters<Expressions>::type;
+
+template <typename... Expressions>
+struct parameters<std::tuple<Expressions...>>
+{
+   using type = meta::type_list<std::decay_t<parameter_node_t<Expressions>>...>;
+};
+
+
+// TODO
+// sources
+// all_params = soures && dependees
+
+
 
 template <typename AdjacencyMap, typename Expressions>
 struct dependency_manager
@@ -334,15 +383,16 @@ struct dependency_manager
 
    exprs_t  exprs;
 
-   template <typename Terminal, typename Value>
-   void set(Terminal term, Value x)
+   template <typename Parameter, typename Value>
+   void set(Parameter&& parameter, Value x)
    {
-      eval e;
-      using key_t = std::decay_t<decltype(get_parameter(term))>;
-      meta::type_at_t<map_t, key_t> ex;
-      using keys_t = typename dependees<exprs_t>::type;
-      constexpr size_t n = meta::index_of_v<dependees_t<exprs_t>, key_t>;
+      //static_assert( is_source_parameter_v<Parameter>, "The given parameter is not a source.");
+      using key_t = std::decay_t<decltype(get_parameter(parameter))>;
+      using keys_t = parameters_t<exprs_t>;   // TODO use only sources_t
+      constexpr size_t n = meta::index_of_v<keys_t, key_t>;
 
+      eval e;
+      meta::type_at_t<map_t, key_t> ex;
       // set value at n
       //    assign_to_value
       // update all dependees recursively
@@ -352,15 +402,15 @@ struct dependency_manager
    }
 
 
-   template <typename Terminal>
-   auto get(Terminal term)
+   template <typename Parameter>
+   auto get(Parameter&& parameter)
    {
-      just_dependee  e;
-      using key_t = std::decay_t<decltype(get_parameter(term))>;
-      using keys_t = typename dependees<exprs_t>::type;
-      constexpr size_t n = meta::index_of_v<typename dependees<exprs_t>::type, key_t>;
+      using key_t = std::decay_t<decltype(get_parameter(parameter))>;
+      using keys_t = parameters_t<exprs_t>;
+      constexpr size_t n = meta::index_of_v<keys_t, key_t>;
+
       auto const& expr = std::get<n>(exprs);
-      return get_value(e( expr ));
+      return get_value( expr );
    }
 };
 
@@ -427,12 +477,19 @@ int main()
 
    deps.set(a_1, 3);
 
-   //std::cout << deps.get(a) << std::endl;
-   //std::cout << deps.get(b) << std::endl;
+   std::cout << deps.get(a) << std::endl;
+   std::cout << deps.get(b) << std::endl;
    std::cout << deps.get(a_1) << std::endl;
    std::cout << deps.get(c) << std::endl;
    std::cout << deps.get(d) << std::endl;
    std::cout << deps.get(name) << std::endl;
 
+
+   std::cout << std::boolalpha;
+   std::cout << is_valid_expression_v<decltype(a)> << std::endl;
+   std::cout << is_valid_expression_v<decltype(a = 3)> << std::endl;
+   std::cout << is_valid_expression_v<decltype(a = b*a)> << std::endl;
+   std::cout << is_valid_expression_v<decltype(a = b + a_1)> << std::endl;
+   std::cout << is_valid_expression_v<decltype(a + b = b + a_1)> << std::endl;
 }
 
