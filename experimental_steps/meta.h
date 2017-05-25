@@ -349,18 +349,6 @@ namespace meta {
       using type = typename fold<MetaFunction, MetaFunction<Init,T>, TypeContainer<Ts...> >::type;
    };
 
-
-
-
-
-
-   // ----------------------------------------------------------------------------------------------
-   // Invoke Return Type
-   // ----------------------------------------------------------------------------------------------
-
-   template <typename Function, typename... Args>
-   using invoke_result_t = decltype( std::declval<Function>()(std::declval<Args>()...) );
-
 }
 
 

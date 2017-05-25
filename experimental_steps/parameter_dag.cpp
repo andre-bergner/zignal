@@ -78,7 +78,7 @@ namespace building_blocks
       template< typename This , typename... Args >
       struct result< This( Args... ) >
       {
-         using type = decltype( std::declval<This>()( std::declval<Args>()... ));
+         using type = std::result_of_t<This(Args...)>;
       };
    };
 
@@ -122,7 +122,7 @@ namespace building_blocks
 
    template <typename Expr>
    using collect_dependendencies_t
-      = meta::invoke_result_t<collect_dependendencies, Expr>;
+      = std::result_of_t<collect_dependendencies(Expr)>;
 
 
    struct rhs_dependendencies : or_
@@ -186,7 +186,7 @@ namespace building_blocks
 
    template <typename AdjacencyMap, typename Expression>
    using insert_dependendencies_t
-      = meta::invoke_result_t<insert_dependendencies, Expression, AdjacencyMap>;
+      = std::result_of_t<insert_dependendencies(Expression, AdjacencyMap)>;
 
 
 
@@ -218,7 +218,7 @@ namespace building_blocks
 
    template <typename Map, typename Expression>
    using build_expression_map_t
-      = meta::invoke_result_t<build_expression_map, Expression, Map>;
+      = std::result_of_t<build_expression_map(Expression, Map)>;
 
 
 
@@ -233,13 +233,15 @@ namespace building_blocks
    {};
 
    template <typename Expr>
-   constexpr bool is_valid_expression_v = meta::invoke_result_t<is_valid_expression, Expr>::value;
+   constexpr bool is_valid_expression_v = std::result_of_t<is_valid_expression(Expr)>::value;
 
 
 
    struct assign_to_value;
    struct extract_value;
 
+
+   // TODO inject context with state (parameters + lookup function)
 
    struct eval : or_
    <  when< just_parameter, extract_value(_value) >
@@ -300,7 +302,7 @@ namespace building_blocks
    {};
 
    template <typename Expr>
-   using dependee_t = meta::invoke_result_t<dependee, Expr>;
+   using dependee_t = std::result_of_t<dependee(Expr)>;
 
 
 
@@ -312,7 +314,7 @@ namespace building_blocks
    {};
 
    template <typename Expr>
-   using parameter_node_t = meta::invoke_result_t<parameter_node, Expr>;
+   using parameter_node_t = std::result_of_t<parameter_node(Expr)>;
 
 }
 
@@ -371,6 +373,24 @@ struct parameters<std::tuple<Expressions...>>
 // all_params = soures && dependees
 
 
+template <typename Tuple, typename F, std::size_t ...Indices>
+void for_each_impl(Tuple&& tuple, F&& f, std::index_sequence<Indices...>)
+{
+    [](...){}(1,
+        (f(std::get<Indices>(std::forward<Tuple>(tuple))), void(), int{})...
+    );
+}
+
+template <typename Tuple, typename F>
+void for_each(Tuple&& tuple, F&& f)
+{
+    constexpr std::size_t N = std::tuple_size<std::remove_reference_t<Tuple>>::value;
+    for_each_impl(std::forward<Tuple>(tuple), std::forward<F>(f),
+                  std::make_index_sequence<N>{});
+}
+
+// std::apply([e = eval{}](auto... expr) { std::make_tuple(e(expr)...); }, exprs);
+
 
 template <typename AdjacencyMap, typename Expressions>
 struct dependency_manager
@@ -385,17 +405,21 @@ struct dependency_manager
    {
       //static_assert( is_source_parameter_v<Parameter>, "The given parameter is not a source.");
       using key_t = std::decay_t<decltype(get_parameter(parameter))>;
-      using keys_t = parameters_t<exprs_t>;   // TODO use only sources_t
+      using keys_t = parameters_t<exprs_t>;
       constexpr size_t n = meta::index_of_v<keys_t, key_t>;
 
-      eval e;
-      meta::type_at_t<map_t, key_t> ex;
+      auto& expr = std::get<n>(exprs);
+      get_value(expr) = x;
+
+      for_each(exprs, [](auto x){ std::cout << eval{}(x) << std::endl; });
+      // ISSUE TODO:  dependers are copied into expressions!
+      //              → update does not influence evaluation.
+      //              → need to inject new values for all dependers into evaluation context!
+
+      //meta::type_at_t<map_t, key_t> ex;
       // set value at n
       //    assign_to_value
       // update all dependees recursively
-
-      auto const& expr = std::get<n>(exprs);
-      //std::cout << "result: " << e( expr ) << std::endl;
    }
 
 
@@ -459,7 +483,6 @@ int main()
    std::cout << get_value(a) << std::endl;
    std::cout << get_value(b) << std::endl;
    std::cout << get_value(a_1) << std::endl;
-   std::cout << get_value(a_1) << std::endl;
    std::cout << get_value(c) << std::endl;
    std::cout << get_value(d) << std::endl;
    std::cout << get_value(name) << std::endl;
@@ -475,7 +498,16 @@ int main()
 
    std::cout << "----------------------------------" << std::endl;
 
-   deps.set(a_1, 3);
+   std::cout << deps.get(a) << std::endl;
+   std::cout << deps.get(b) << std::endl;
+   std::cout << deps.get(a_1) << std::endl;
+   std::cout << deps.get(c) << std::endl;
+   std::cout << deps.get(d) << std::endl;
+   std::cout << deps.get(name) << std::endl;
+
+   std::cout << "----------------------------------" << std::endl;
+
+   deps.set(a, 3);
 
    std::cout << deps.get(a) << std::endl;
    std::cout << deps.get(b) << std::endl;
