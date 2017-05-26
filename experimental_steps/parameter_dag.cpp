@@ -125,13 +125,6 @@ namespace building_blocks
       = std::result_of_t<collect_dependendencies(Expr)>;
 
 
-   struct rhs_dependendencies : or_
-   <  when< assign_parameter, collect_dependendencies(_right) >
-   ,  otherwise< meta::type_set<>() >
-   >
-   {};
-
-
    // ---------------------------------------------------------------------------------------------
    // Given a depedent type (Dependee), a set of values that influence that one (Dependers),
    // and a AdjacencyMap (that maps ) insert_dependee will update the AdjacencyMap for all
@@ -237,11 +230,22 @@ namespace building_blocks
 
 
 
+
    struct assign_to_value;
    struct extract_value;
-
+   struct extract_parameter_value;
 
    // TODO inject context with state (parameters + lookup function)
+
+   struct eval_rhs_expr : or_
+   <  when< just_parameter, extract_parameter_value(_value,_state) >
+   ,  when< _ , _default<eval_rhs_expr> >
+   >
+   {};
+
+   struct eval_assign_expr : when< assign<_,_> , eval_rhs_expr(_right,_state) >
+   {};
+
 
    struct eval : or_
    <  when< just_parameter, extract_value(_value) >
@@ -249,6 +253,7 @@ namespace building_blocks
    ,  when< _ , _default<eval> >
    >
    {};
+
 
 
    struct extract_value : callable_decltype
@@ -274,9 +279,9 @@ namespace building_blocks
 
    constexpr auto get_value  = building_blocks::extract_value_trafo{};
 
-   struct extract_parameter_trafo : when< just_parameter, _value > {};
+   struct unlift_parameter : when< just_parameter, _value > {};
 
-   constexpr auto get_parameter = building_blocks::extract_parameter_trafo{};
+   constexpr auto get_parameter = building_blocks::unlift_parameter{};
 
 
 
@@ -295,16 +300,6 @@ namespace building_blocks
    };
 
 
-   struct dependee : or_
-   <  when< assign_parameter, extract_parameter_trafo(_left) >
-   ,  otherwise< meta::type_set<>() >
-   >
-   {};
-
-   template <typename Expr>
-   using dependee_t = std::result_of_t<dependee(Expr)>;
-
-
 
    struct parameter_node : or_
    <  when< assign_parameter, parameter_node(_left) >
@@ -316,6 +311,37 @@ namespace building_blocks
    template <typename Expr>
    using parameter_node_t = std::result_of_t<parameter_node(Expr)>;
 
+
+
+
+   template <typename Expressions>
+   struct parameters;
+
+   template <typename... Expressions>
+   struct parameters<std::tuple<Expressions...>>
+   {
+      using type = meta::type_list<std::decay_t<parameter_node_t<Expressions>>...>;
+   };
+
+   template <typename Expressions>
+   using parameters_t = typename parameters<Expressions>::type;
+
+
+
+   struct extract_parameter_value : callable_decltype
+   {
+      template <typename Key, typename State>
+      decltype(auto) operator()( Key const& key, State const& state ) const
+      {
+         using keys_t = parameters_t<State>;
+         constexpr std::size_t n = meta::index_of_v<keys_t, Key>;
+
+         auto const& expr = std::get<n>(state);
+         return get_value(expr);
+      }
+   };
+
+
 }
 
 
@@ -325,13 +351,11 @@ using building_blocks::make_terminal;
 using building_blocks::get_value;
 using building_blocks::get_parameter;
 using building_blocks::eval;
-using building_blocks::collect_dependendencies;
-using building_blocks::rhs_dependendencies;
-using building_blocks::insert_dependee_t;
+using building_blocks::eval_assign_expr;
 using building_blocks::insert_dependendencies_t;
 using building_blocks::build_expression_map_t;
-using building_blocks::dependee_t;
-using building_blocks::parameter_node_t;
+using building_blocks::parameters_t;
+using building_blocks::extract_parameter_value;
 using building_blocks::is_valid_expression_v;
 
 
@@ -340,32 +364,6 @@ using building_blocks::is_valid_expression_v;
    struct NAME##_t {};  \
    decltype(make_terminal(parameter<NAME##_t,TYPE>{}))  NAME = make_terminal(parameter<NAME##_t,TYPE>{VALUE});
 
-
-
-template <typename Expressions>
-struct dependees;
-
-template <typename Expressions>
-using dependees_t = typename dependees<Expressions>::type;
-
-template <typename... Expressions>
-struct dependees<std::tuple<Expressions...>>
-{
-   using type = meta::type_list<std::decay_t<dependee_t<Expressions>>...>;
-};
-
-
-template <typename Expressions>
-struct parameters;
-
-template <typename Expressions>
-using parameters_t = typename parameters<Expressions>::type;
-
-template <typename... Expressions>
-struct parameters<std::tuple<Expressions...>>
-{
-   using type = meta::type_list<std::decay_t<parameter_node_t<Expressions>>...>;
-};
 
 
 // TODO
@@ -392,6 +390,21 @@ void for_each(Tuple&& tuple, F&& f)
 // std::apply([e = eval{}](auto... expr) { std::make_tuple(e(expr)...); }, exprs);
 
 
+/*
+BOOST_PROTO_DEFINE_ENV_VAR( current_input_t, current_input );
+BOOST_PROTO_DEFINE_ENV_VAR( delayed_input_t, delayed_input );
+
+,  when
+   <  terminal< placeholder<_> >
+   ,  place_the_holder( _value , _env_var<current_input_t> )
+   >
+
+e( l, 0, ( current_input = tuple_take<input_arity_t<LeftExpr>::value>(input)
+         , delayed_input = std::tie( left_delayed_input, left_state )
+         ))
+
+*/
+
 template <typename AdjacencyMap, typename Expressions>
 struct dependency_manager
 {
@@ -411,7 +424,12 @@ struct dependency_manager
       auto& expr = std::get<n>(exprs);
       get_value(expr) = x;
 
-      for_each(exprs, [](auto x){ std::cout << eval{}(x) << std::endl; });
+      std::cout << eval_assign_expr{}(std::get<2>(exprs),exprs) << std::endl;
+      std::cout << eval_assign_expr{}(std::get<3>(exprs),exprs) << std::endl;
+
+      //for_each(exprs, [&](auto x){ std::cout << eval_assign_expr{}(x,exprs) << std::endl; });
+
+
       // ISSUE TODO:  dependers are copied into expressions!
       //              → update does not influence evaluation.
       //              → need to inject new values for all dependers into evaluation context!
@@ -427,11 +445,8 @@ struct dependency_manager
    auto get(Parameter&& parameter)
    {
       using key_t = std::decay_t<decltype(get_parameter(parameter))>;
-      using keys_t = parameters_t<exprs_t>;
-      constexpr size_t n = meta::index_of_v<keys_t, key_t>;
 
-      auto const& expr = std::get<n>(exprs);
-      return get_value(expr);
+      return extract_parameter_value{}(key_t{}, exprs);
    }
 };
 
