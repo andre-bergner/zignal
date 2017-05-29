@@ -4,6 +4,7 @@
 // • allow set only for sources
 // • recursively update all dependees
 //   --> requires topological sort of nodes
+// • remove state from parameter → move into own state-tuple
 
 
 
@@ -158,19 +159,11 @@ namespace building_blocks
    // expression  ( prop[n] = f(prop[..]), adj_map ) -> adj_map
    //
 
-   struct insert_dependendencies_impl : callable_decltype
-   {
-      template <typename Lhs, typename Rhs, typename AdjacencyMap>
-      auto operator()( Lhs&&, Rhs&&, AdjacencyMap&& ) const
-      {
-         return insert_dependee_t< std::decay_t<Lhs>, collect_dependendencies_t<Rhs>
-                                 , std::decay_t<AdjacencyMap> >{};
-      }
+   struct insert_dependendencies_impl;
 
-   };
 
    struct insert_dependendencies : or_
-   <  when< assign< just_parameter , _ >
+   <  when< assign_parameter
           , insert_dependendencies_impl(_value(_left), _right, _state)
           >
    ,  otherwise< _state >
@@ -182,36 +175,22 @@ namespace building_blocks
       = std::result_of_t<insert_dependendencies(Expression, AdjacencyMap)>;
 
 
-
-
-
-   struct insert_expression_impl : callable_decltype
+   struct insert_dependendencies_impl : callable_decltype
    {
-      template <typename Lhs, typename Rhs, typename ExpressionsMap>
-      auto operator()( Lhs&&, Rhs&& rhs, ExpressionsMap&& ) const
+      template <typename Lhs, typename Rhs, typename AdjacencyMap>
+      auto operator()( Lhs&&, Rhs&&, AdjacencyMap&& ) const
       {
-         using key_t = std::decay_t<Lhs>;
-         using expr_t = std::decay_t<Rhs>;
-         return meta::insert_t< std::decay_t<ExpressionsMap>, key_t, expr_t >{};
+         // meta::fold_t< insert_dependendencies_t, meta::type_map<>, expr_list_t >;
+         return insert_dependee_t< std::decay_t<Lhs>, collect_dependendencies_t<Rhs>
+                                 , std::decay_t<AdjacencyMap> >{};
       }
    };
 
-
-   // TODO: almast same structure as insert_dependendencies, options:
-   //  * return tuple (left,right)  or empty
-   //  * make called transform a template parameter
-   struct build_expression_map : or_
-   <  when< assign< just_parameter , _ >
-          , insert_expression_impl(_value(_left), _right, _state)
-          >
-   ,  otherwise< _state >
-   >
-   {};
+   // meta::fold_t< insert_dependendencies_t, meta::type_map<>, expr_list_t >;
 
 
-   template <typename Map, typename Expression>
-   using build_expression_map_t
-      = std::result_of_t<build_expression_map(Expression, Map)>;
+
+
 
 
 
@@ -353,7 +332,6 @@ using building_blocks::get_parameter;
 using building_blocks::eval;
 using building_blocks::eval_assign_expr;
 using building_blocks::insert_dependendencies_t;
-using building_blocks::build_expression_map_t;
 using building_blocks::parameters_t;
 using building_blocks::extract_parameter_value;
 using building_blocks::is_valid_expression_v;
@@ -424,20 +402,9 @@ struct dependency_manager
       auto& expr = std::get<n>(exprs);
       get_value(expr) = x;
 
+      // TODO update all dependees recursively
       std::cout << eval_assign_expr{}(std::get<2>(exprs),exprs) << std::endl;
       std::cout << eval_assign_expr{}(std::get<3>(exprs),exprs) << std::endl;
-
-      //for_each(exprs, [&](auto x){ std::cout << eval_assign_expr{}(x,exprs) << std::endl; });
-
-
-      // ISSUE TODO:  dependers are copied into expressions!
-      //              → update does not influence evaluation.
-      //              → need to inject new values for all dependers into evaluation context!
-
-      //meta::type_at_t<map_t, key_t> ex;
-      // set value at n
-      //    assign_to_value
-      // update all dependees recursively
    }
 
 
