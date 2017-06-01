@@ -159,38 +159,53 @@ namespace building_blocks
    // expression  ( prop[n] = f(prop[..]), adj_map ) -> adj_map
    //
 
-   struct insert_dependendencies_impl;
-
-
-   struct insert_dependendencies : or_
-   <  when< assign_parameter
-          , insert_dependendencies_impl(_value(_left), _right, _state)
-          >
-   ,  otherwise< _state >
-   >
-   {};
-
-   template <typename AdjacencyMap, typename Expression>
-   using insert_dependendencies_t
-      = std::result_of_t<insert_dependendencies(Expression, AdjacencyMap)>;
-
-
-   struct insert_dependendencies_impl : callable_decltype
+   struct build_dependency_list : callable_decltype
    {
-      template <typename Lhs, typename Rhs, typename AdjacencyMap>
-      auto operator()( Lhs&&, Rhs&&, AdjacencyMap&& ) const
+      template <typename Lhs, typename Rhs>
+      auto operator()(Lhs&&, Rhs&&) const
       {
-         // meta::fold_t< insert_dependendencies_t, meta::type_map<>, expr_list_t >;
-         return insert_dependee_t< std::decay_t<Lhs>, collect_dependendencies_t<Rhs>
-                                 , std::decay_t<AdjacencyMap> >{};
+         using dependee_t = std::decay_t<Lhs>;
+         using dependencies_t = std::decay_t<Rhs>;
+         return meta::type_pair< dependee_t, collect_dependendencies_t<dependencies_t> >{};
+      }
+
+      template <typename Arg>
+      auto operator()(Arg&&) const
+      {
+         using dependee_t = std::decay_t<Arg>;
+         return meta::type_pair< dependee_t, meta::type_set<> >{};
       }
    };
 
-   // meta::fold_t< insert_dependendencies_t, meta::type_map<>, expr_list_t >;
+   struct split_involved_parameters : or_
+   <  when< assign_parameter, build_dependency_list(_value(_left), _right) >
+   ,  when< just_parameter, build_dependency_list(_value) >
+   >
+   {};
+
+   template <typename Expression>
+   using split_involved_parameters_t = std::result_of_t<split_involved_parameters(Expression)>;
 
 
 
 
+
+   template <typename AdjacencyMap, typename InvolvedParameters>
+   struct insert_dependendencies
+   {
+      //using adjacency_map_t = meta::fold_t
+      //<  insert_dependendencies, AdjacencyMap, InvolvedParameters > >;
+
+      using type = insert_dependee_t
+      <  typename InvolvedParameters::first_t
+      ,  typename InvolvedParameters::second_t
+      ,  AdjacencyMap
+      >;
+   };
+
+   template <typename AdjacencyMap, typename Expression>
+   using insert_dependendencies_t
+      = typename insert_dependendencies<AdjacencyMap, split_involved_parameters_t<Expression>>::type;
 
 
 
@@ -442,6 +457,7 @@ auto make_mapping_dag( Expressions&&... es )
    using expr_list_t = meta::type_list<Expressions...>;
    using dependency_map_t = meta::fold_t< insert_dependendencies_t, meta::type_map<>, expr_list_t >;
 
+
    eval  e;
    [](...){}( (e(es),0)... );
 
@@ -477,6 +493,7 @@ int main()
    ,  d    = b*b
    ,  name = name + " world: " + std::to_string(get_value(a))     // recursive --> should be error
    );
+
 
    std::cout << "----------------------------------" << std::endl;
 
