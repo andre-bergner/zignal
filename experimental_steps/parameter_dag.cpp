@@ -112,6 +112,10 @@ namespace building_blocks
    };
 
 
+   // ---------------------------------------------------------------------------------------------
+   // input: an expression
+   // output: meta-set of all parameter-types that are used in the expression
+
    struct collect_dependendencies : or_
    <  when< just_parameter, make_set(_value) >
    ,  when< terminal<_>, meta::type_set<>() >
@@ -195,8 +199,8 @@ namespace building_blocks
    template <typename AdjacencyMap, typename InvolvedParameters>
    struct insert_dependendencies
    {
-      //using adjacency_map_t = meta::fold_t
-      //<  insert_dependendencies, AdjacencyMap, InvolvedParameters > >;
+      // using adjacency_map_t = meta::fold_t
+      // <  insert_dependendencies, AdjacencyMap, InvolvedParameters > >;
 
       using type = insert_dependee_t
       <  typename InvolvedParameters::first_t
@@ -240,7 +244,9 @@ namespace building_blocks
    {};
 
    struct eval_assign_expr : when< assign<_,_> , eval_rhs_expr(_right,_state) >
-   {};
+   {
+      // TODO assign the evaluated 
+   };
 
 
    struct eval : or_
