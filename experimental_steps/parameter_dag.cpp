@@ -12,6 +12,8 @@
 // PARAMETER DAG -- build compile time description of dependencies using boost.proto 
 // ------------------------------------------------------------------------------------------------
 
+#define BOOST_NO_AUTO_PTR
+
 #include "demangle.h"
 #include "meta.h"
 #include <iostream>
