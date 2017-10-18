@@ -57,6 +57,14 @@ namespace meta {
    template <typename...> struct type_map  {};
 
 
+   template <typename T1, typename T2>
+   struct type_pair
+   {
+      using first_t = T1;
+      using second_t = T2;
+   };
+
+
    // ----------------------------------------------------------------------------------------------
    // Declarations
    // ----------------------------------------------------------------------------------------------
@@ -119,9 +127,6 @@ namespace meta {
    // ----------------------------------------------------------------------------------------------
    // Helper
    // ----------------------------------------------------------------------------------------------
-
-   template <typename, typename> struct type_pair {};
-
 
    namespace detail {
       template <typename T, typename U>

@@ -14,7 +14,7 @@
 
 #define BOOST_NO_AUTO_PTR
 
-#include "demangle.h"
+#include "../flowz/demangle.h"
 #include "meta.h"
 #include <iostream>
 #include <array>
