@@ -14,10 +14,7 @@
 
 #define BOOST_NO_AUTO_PTR
 
-#include "../flowz/demangle.h"
 #include "meta.h"
-#include <iostream>
-#include <array>
 #include <boost/proto/core.hpp>
 #include <boost/proto/transform.hpp>
 #include <boost/proto/debug.hpp>
@@ -471,56 +468,5 @@ auto make_mapping_dag( Expressions&&... es )
 
    using expression_t = std::tuple<Expressions... >;
    return dependency_manager<dependency_map_t, expression_t>{ std::forward_as_tuple(es...) };
-}
-
-
-
-int main()
-{
-   PARAMETER( float, a, 1337 );
-   PARAMETER( float, b, 47 );
-   PARAMETER( float, c, 0 );
-   PARAMETER( float, d, 0 );
-   PARAMETER( float, a_1, 0 );
-   PARAMETER( std::string, name, "hello" );
-
-   std::cout << "----------------------------------" << std::endl;
-
-   std::cout << get_value(a) << std::endl;
-   std::cout << get_value(b) << std::endl;
-   std::cout << get_value(a_1) << std::endl;
-   std::cout << get_value(c) << std::endl;
-   std::cout << get_value(d) << std::endl;
-   std::cout << get_value(name) << std::endl;
-
-   auto deps = make_mapping_dag
-   (  a    //= 1337
-   ,  b    //= 47
-   ,  a_1  = 1.f / a
-   ,  c    = (b + 1.f) * a_1
-   ,  d    = b*b
-   ,  name = name + " world: " + std::to_string(get_value(a))     // recursive --> should be error
-   );
-
-
-   std::cout << "----------------------------------" << std::endl;
-
-   std::cout << deps.get(a) << std::endl;
-   std::cout << deps.get(b) << std::endl;
-   std::cout << deps.get(a_1) << std::endl;
-   std::cout << deps.get(c) << std::endl;
-   std::cout << deps.get(d) << std::endl;
-   std::cout << deps.get(name) << std::endl;
-
-   std::cout << "----------------------------------" << std::endl;
-
-   deps.set(a, 3);
-
-   std::cout << deps.get(a) << std::endl;
-   std::cout << deps.get(b) << std::endl;
-   std::cout << deps.get(a_1) << std::endl;
-   std::cout << deps.get(c) << std::endl;
-   std::cout << deps.get(d) << std::endl;
-   std::cout << deps.get(name) << std::endl;
 }
 
