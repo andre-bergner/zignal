@@ -45,6 +45,7 @@ int main()
    cout << type_name< force_insert_t<m3,int,bool> >() << endl;
    cout << type_name< force_insert_t<type_map<>,int,bool> >() << endl;
    cout << "--------------------------------------" << endl;
+   cout << "type_at_t<map>:\n";
    cout << type_name< type_at_t<m3,char> >() << endl;
    cout << type_name< type_at_t<m3,bool> >() << endl;
 
@@ -57,7 +58,29 @@ int main()
    cout << index_of_v<type_list<int,char,bool>,char> << endl;
    cout << index_of_v<type_list<int,char,bool>,bool> << endl;
 
+   cout << "--------------------------------------" << endl;
+   cout << "type_set:\n";
+   static_assert(std::is_same_v<
+      insert_t<type_set<char, float>, char>,
+      type_set<char, float>
+   >);
 
+   static_assert(std::is_same_v<
+      force_insert_t<type_set<char, float>, float>,
+      type_set<char, float>
+   >);
+
+   static_assert(std::is_same_v<
+      force_insert_t<type_set<char, float>, char>,
+      type_set<float, char>
+   >);
+   cout << type_name< force_insert_t<type_set<char, float>, bool> >() << endl;
+   cout << type_name< force_insert_t<type_set<>, bool> >() << endl;
+   cout << type_name< force_insert_t<type_set<char, float>, char> >() << endl;
+
+
+
+   cout << "--------------------------------------" << endl;
 
    using S1 = type_set< int, char >;
    using S2 = type_set< bool, float >;

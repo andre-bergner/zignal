@@ -165,15 +165,6 @@ namespace meta {
       using type = type_list<Us...,T>;
    };
 
-   template <typename T, typename... Us>
-   struct insert< type_set<Us...>, T > : std::conditional
-   <  contains_v<T, type_list<Us...>>
-   ,  type_set<Us...>
-   ,  type_set<Us...,T>
-   >
-   {};
-
-
    template <typename Value>
    struct index_of<type_list<>, Value>
    {
@@ -188,6 +179,39 @@ namespace meta {
    template <typename Value, typename Value0, typename... Values>
    struct index_of<type_list<Value0, Values...>, Value>
      : std::integral_constant< size_t, 1 + index_of_v<type_list<Values...>, Value> > {};
+
+
+
+   // ----------------------------------------------------------------------------------------------
+   // Set Implementations
+   // ----------------------------------------------------------------------------------------------
+
+   template <typename T, typename... Us>
+   struct insert< type_set<Us...>, T > : std::conditional
+   <  contains_v<T, type_list<Us...>>
+   ,  type_set<Us...>
+   ,  type_set<Us...,T>
+   >
+   {};
+
+   template <typename T, typename... Us>
+   struct remove< type_set<Us...>, T >
+   {
+      template <typename NewMap, typename U>
+      using inserter_t = std::conditional_t
+      <  std::is_same_v<T,U>
+      ,  NewMap
+      ,  insert_t< NewMap, U >
+      >;
+
+      using type = fold_t< inserter_t, type_set<>, type_set<Us...> >;
+   };
+
+   template <typename T, typename... Us>
+   struct force_insert< type_set<Us...>, T >
+   {
+      using type = insert_t< remove_t<type_set<Us...>, T>, T>;
+   };
 
 
    // ----------------------------------------------------------------------------------------------
