@@ -223,6 +223,9 @@ namespace building_blocks
       using type = meta::fold_t< f, FlatPath, meta::type_at_t<AdjacencyMap, Entry> >;
    };
 
+   template <typename AdjacencyMap, typename T0, typename FlatPath = meta::type_set<> >
+   using depth_first_search_t = typename depth_first_search<AdjacencyMap, T0, FlatPath>::type;
+
 
    // ---------------------------------------------------------------------------------------------
 
@@ -367,7 +370,7 @@ using building_blocks::insert_dependendencies_t;
 using building_blocks::parameters_t;
 using building_blocks::extract_parameter_value;
 using building_blocks::is_valid_expression_v;
-
+using building_blocks::depth_first_search_t;
 
 
 #define PARAMETER(TYPE,NAME,VALUE)  \
@@ -423,6 +426,20 @@ struct dependency_manager
 
    exprs_t  exprs;
 
+   template <size_t N>
+   void update_parameter()
+   {
+      get_value(std::get<N>(exprs)) = eval_assign_expr{}(std::get<N>(exprs),exprs);
+   }
+
+   template <typename keys_t, typename... P>
+   void update_parameters(meta::type_set<P...>&&)
+   {
+      [](...){}(1,
+        (update_parameter<meta::index_of_v<keys_t, P>>(), void(), int{})...
+      );
+   }
+
    template <typename Parameter, typename Value>
    void set(Parameter&& parameter, Value x)
    {
@@ -434,12 +451,10 @@ struct dependency_manager
       auto& expr = std::get<n>(exprs);
       get_value(expr) = x;
 
-      // TODO update all dependees recursively
-      std::cout << eval_assign_expr{}(std::get<3>(exprs),exprs) << std::endl;
-      std::cout << eval_assign_expr{}(std::get<2>(exprs),exprs) << std::endl;
+      using deep_dependees_t = depth_first_search_t<map_t, key_t>;
+      //std::cout << type_name<deep_dependees_t>() << std::endl;
 
-      get_value(std::get<3>(exprs)) = eval_assign_expr{}(std::get<3>(exprs),exprs);
-      get_value(std::get<2>(exprs)) = eval_assign_expr{}(std::get<2>(exprs),exprs);
+      update_parameters<keys_t>(deep_dependees_t{});
    }
 
 

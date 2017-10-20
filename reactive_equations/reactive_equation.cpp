@@ -1,7 +1,7 @@
 #include <iostream>
+#include "../flowz/demangle.h"
 
 #include "reactive_expressions.hpp"
-#include "../flowz/demangle.h"
 
 
 int main()
@@ -61,8 +61,8 @@ int main()
 
    std::cout << "----------------------------------" << std::endl;
 
-   using deep_dependees_t = typename building_blocks::depth_first_search<decltype(deps)::map_t, building_blocks::parameter<a_t, float>>::type;
-   std::cout << type_name<deep_dependees_t>() << std::endl;
+   //using deep_dependees_t = depth_first_search_t<decltype(deps)::map_t, building_blocks::parameter<a_t, float>>;
+   //std::cout << type_name<deep_dependees_t>() << std::endl;
    //std::cout << type_name<meta::type_at_t<decltype(deps)::map_t, building_blocks::parameter<a_t, float>>>() << std::endl;
    //std::cout << type_name<decltype(deps)::map_t>() << std::endl;
 }
