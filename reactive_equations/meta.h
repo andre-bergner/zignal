@@ -378,6 +378,12 @@ namespace meta {
       using type = typename fold<MetaFunction, MetaFunction<Init,T>, TypeContainer<Ts...> >::type;
    };
 
+
+   template <template <typename...> class MetaFunction, typename Init>
+   struct fold< MetaFunction, Init, void>
+   {
+      using type = Init;
+   };
 }
 
 

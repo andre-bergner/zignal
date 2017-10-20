@@ -5,6 +5,7 @@
 // • recursively update all dependees
 //   --> requires topological sort of nodes
 // • remove state from parameter → move into own state-tuple
+// • dependent values must be read-only!
 
 
 
@@ -210,6 +211,17 @@ namespace building_blocks
    using insert_dependendencies_t
       = typename insert_dependendencies<AdjacencyMap, split_involved_parameters_t<Expression>>::type;
 
+
+
+
+   template <typename AdjacencyMap, typename Entry, typename FlatPath = meta::type_set<> >
+   struct depth_first_search
+   {
+      template <typename List, typename D>
+      using f = typename depth_first_search< AdjacencyMap, D, meta::force_insert_t<List,D> >::type;
+
+      using type = meta::fold_t< f, FlatPath, meta::type_at_t<AdjacencyMap, Entry> >;
+   };
 
 
    // ---------------------------------------------------------------------------------------------
@@ -423,8 +435,11 @@ struct dependency_manager
       get_value(expr) = x;
 
       // TODO update all dependees recursively
-      std::cout << eval_assign_expr{}(std::get<2>(exprs),exprs) << std::endl;
       std::cout << eval_assign_expr{}(std::get<3>(exprs),exprs) << std::endl;
+      std::cout << eval_assign_expr{}(std::get<2>(exprs),exprs) << std::endl;
+
+      get_value(std::get<3>(exprs)) = eval_assign_expr{}(std::get<3>(exprs),exprs);
+      get_value(std::get<2>(exprs)) = eval_assign_expr{}(std::get<2>(exprs),exprs);
    }
 
 
