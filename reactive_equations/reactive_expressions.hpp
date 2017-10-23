@@ -1,4 +1,5 @@
 // TODO
+// • use initialization from eq definition (instead of parameter definition)
 // • check for cycles
 // • detect source parameters
 // • allow set only for sources
@@ -256,9 +257,7 @@ namespace building_blocks
    {};
 
    struct eval_assign_expr : when< assign<_,_> , eval_rhs_expr(_right,_state) >
-   {
-      // TODO assign the evaluated 
-   };
+   {};
 
 
    struct eval : or_
@@ -377,30 +376,6 @@ using building_blocks::depth_first_search_t;
    struct NAME##_t {};  \
    decltype(make_terminal(parameter<NAME##_t,TYPE>{}))  NAME = make_terminal(parameter<NAME##_t,TYPE>{VALUE});
 
-
-
-// TODO
-// sources
-// all_params = soures && dependees
-
-
-template <typename Tuple, typename F, std::size_t ...Indices>
-void for_each_impl(Tuple&& tuple, F&& f, std::index_sequence<Indices...>)
-{
-    [](...){}(1,
-        (f(std::get<Indices>(std::forward<Tuple>(tuple))), void(), int{})...
-    );
-}
-
-template <typename Tuple, typename F>
-void for_each(Tuple&& tuple, F&& f)
-{
-    constexpr std::size_t N = std::tuple_size<std::remove_reference_t<Tuple>>::value;
-    for_each_impl(std::forward<Tuple>(tuple), std::forward<F>(f),
-                  std::make_index_sequence<N>{});
-}
-
-// std::apply([e = eval{}](auto... expr) { std::make_tuple(e(expr)...); }, exprs);
 
 
 /*
