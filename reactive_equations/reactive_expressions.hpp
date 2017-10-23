@@ -7,6 +7,10 @@
 //   --> requires topological sort of nodes
 // • remove state from parameter → move into own state-tuple
 // • dependent values must be read-only!
+// • rename get_value to something like get_state or get_memory ...
+// • eval_assign_expr should check that rhs exists, error otherwise
+//
+
 
 
 
@@ -355,6 +359,51 @@ namespace building_blocks
    };
 
 
+
+
+
+
+   // TODO
+   // • create list of sources S
+   // • for (s:S) deps.set(s, eval_rhs(s))
+
+   struct rhs_dependendencies : or_
+   <  when< assign_parameter, collect_dependendencies(_right) >
+   ,  otherwise< meta::type_set<>() >
+   >
+   {};
+
+   template <typename Expr>
+   using rhs_dependendencies_t = std::result_of_t<rhs_dependendencies(Expr)>;
+
+
+   template <typename Sources, typename Expression>
+   struct insert_source
+   {
+      using type = std::conditional_t
+      <  meta::size_v<rhs_dependendencies_t<Expression>> == 0
+      ,  meta::insert_t<Sources, std::decay_t<parameter_node_t<Expression>>>
+      ,  Sources
+      >;
+   };
+
+   template <typename Sources, typename Expression>
+   using insert_source_t = typename insert_source<Sources, Expression>::type;
+
+
+/*
+   struct is_source_parameter : or_
+   <  when< assign_parameter, std::true_type() >
+   ,  when< just_parameter, std::true_type() >
+   ,  otherwise< std::false_type() >
+   >
+   {};
+
+   template <typename Expr>
+   constexpr bool is_source_parameter_v = std::result_of_t<is_source_parameter(Expr)>::value;
+*/
+
+
 }
 
 
@@ -366,6 +415,7 @@ using building_blocks::get_parameter;
 using building_blocks::eval;
 using building_blocks::eval_assign_expr;
 using building_blocks::insert_dependendencies_t;
+using building_blocks::insert_source_t;
 using building_blocks::parameters_t;
 using building_blocks::extract_parameter_value;
 using building_blocks::is_valid_expression_v;
@@ -401,6 +451,19 @@ struct dependency_manager
 
    exprs_t  exprs;
 
+   dependency_manager(exprs_t&& es) : exprs{ std::forward<exprs_t>(es) }
+   {
+      using sources_t = meta::fold_t< insert_source_t, meta::type_set<>, exprs_t >;
+      //std::cout << type_name<sources_t>() << std::endl;
+
+      meta::for_each(sources_t{}, [this](auto&& s){
+         using key_t = std::decay_t<decltype(s)>;
+         using keys_t = parameters_t<exprs_t>;
+         constexpr size_t n = meta::index_of_v<keys_t, key_t>;
+         set<key_t>( eval_assign_expr{}(std::get<n>(exprs),exprs) );
+      });
+   }
+
    template <size_t N>
    void update_parameter()
    {
@@ -410,16 +473,40 @@ struct dependency_manager
    template <typename keys_t, typename... P>
    void update_parameters(meta::type_set<P...>&&)
    {
+      // TODO ifdef C++17 use fold expression
       [](...){}(1,
         (update_parameter<meta::index_of_v<keys_t, P>>(), void(), int{})...
       );
    }
 
+   /*
+   // #ifdef C++17
    template <typename Parameter, typename Value>
-   void set(Parameter&& parameter, Value x)
+   struct ParamValuePair {
+      Parameter&& p;
+      Value&& v;
+   };
+
+   template <typename... Parameter, typename... Value>
+   void set(ParamValuePair<Parameter,Value>... pv)
+   {
+
+   }
+   // #endif
+   */
+
+
+   template <typename Parameter, typename Value>
+   void set(Parameter&& parameter, Value&& x)
+   {
+      set<decltype(get_parameter(parameter))>( std::forward<Value>(x) );
+   }
+
+   template <typename Parameter, typename Value>
+   void set(Value&& x)
    {
       //static_assert( is_source_parameter_v<Parameter>, "The given parameter is not a source.");
-      using key_t = std::decay_t<decltype(get_parameter(parameter))>;
+      using key_t = std::decay_t<Parameter>;
       using keys_t = parameters_t<exprs_t>;
       constexpr size_t n = meta::index_of_v<keys_t, key_t>;
 

@@ -27,8 +27,8 @@ int main()
    std::cout << "created dependency DAG." << std::endl;
 
    auto deps = make_mapping_dag
-   (  a    //= 1337
-   ,  b    //= 47
+   (  a    = 1337
+   ,  b    = 47
    ,  c    = (b + 1.f) * a_1 + a
    ,  a_1  = 1.f / a
    ,  d    = b*b

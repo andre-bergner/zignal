@@ -25,6 +25,8 @@ int main()
    cout << type_name<s2>() << endl;
    cout << type_name<s3>() << endl;
 
+   static_assert( size_v<s3> == 2 );
+   for_each(s3{}, [](auto&& x){ std::cout << "type: " << type_name(x) << std::endl; });
 
    using m0 = type_map<>;
    using m1 = insert_t< m0, int, float>;

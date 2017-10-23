@@ -65,6 +65,19 @@ namespace meta {
    };
 
 
+   template <typename TypeContainer>
+   struct size;
+
+   template <template <typename...> class TypeContainer, typename... Types>
+   struct size<TypeContainer<Types...>>
+   {
+      static constexpr std::size_t value = sizeof...(Types);
+   };
+
+   template <typename TypeContainer>
+   constexpr std::size_t size_v = size<TypeContainer>::value;
+
+
    // ----------------------------------------------------------------------------------------------
    // Declarations
    // ----------------------------------------------------------------------------------------------
@@ -122,6 +135,14 @@ namespace meta {
    template <template <typename...> class MetaFunction, typename Init, typename TypeContainer>
    using fold_t = typename fold<MetaFunction, Init, TypeContainer>::type;
 
+
+   template <template <typename...> class TypeContainer, typename Function, typename... Ts>
+   void for_each(TypeContainer<Ts...>&&, Function&& f)
+   {
+      [](...){}(1,
+        (f(Ts{}), void(), int{})...
+      );
+   }
 
 
    // ----------------------------------------------------------------------------------------------
