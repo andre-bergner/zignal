@@ -162,10 +162,10 @@ namespace meta {
    struct contains;
 
    template <typename T, typename TypeContainer>
-   constexpr bool contains_v = contains<T,TypeContainer>::value;
+   constexpr bool contains_v = contains<T, TypeContainer>::value;
 
-   template <typename T, typename... Us>
-   struct contains< T, type_list<Us...> > : fold_or
+   template <typename T, template <typename...> class TypeContainer, typename... Us>
+   struct contains< T, TypeContainer<Us...> > : fold_or
    <  std::is_same
       <  type_list< detail::as_type_t<T,Us> >
       ,  type_list< Us >

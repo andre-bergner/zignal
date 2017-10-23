@@ -1,15 +1,9 @@
 // TODO
-// • use initialization from eq definition (instead of parameter definition)
 // • check for cycles
-// • detect source parameters
-// • allow set only for sources
-// • recursively update all dependees
-//   --> requires topological sort of nodes
 // • remove state from parameter → move into own state-tuple
 // • dependent values must be read-only!
 // • rename get_value to something like get_state or get_memory ...
 // • eval_assign_expr should check that rhs exists, error otherwise
-//
 
 
 
@@ -218,7 +212,7 @@ namespace building_blocks
 
 
 
-
+   // this is used as a topological sort of nodes
    template <typename AdjacencyMap, typename Entry, typename FlatPath = meta::type_set<> >
    struct depth_first_search
    {
@@ -448,12 +442,12 @@ struct dependency_manager
 {
    using map_t = AdjacencyMap;
    using exprs_t = Expressions;
+   using sources_t = meta::fold_t< insert_source_t, meta::type_set<>, exprs_t >;
 
    exprs_t  exprs;
 
    dependency_manager(exprs_t&& es) : exprs{ std::forward<exprs_t>(es) }
    {
-      using sources_t = meta::fold_t< insert_source_t, meta::type_set<>, exprs_t >;
       //std::cout << type_name<sources_t>() << std::endl;
 
       meta::for_each(sources_t{}, [this](auto&& s){
@@ -505,8 +499,9 @@ struct dependency_manager
    template <typename Parameter, typename Value>
    void set(Value&& x)
    {
-      //static_assert( is_source_parameter_v<Parameter>, "The given parameter is not a source.");
       using key_t = std::decay_t<Parameter>;
+      static_assert( meta::contains_v<key_t, sources_t>, "The given parameter is not a source.");
+
       using keys_t = parameters_t<exprs_t>;
       constexpr size_t n = meta::index_of_v<keys_t, key_t>;
 
