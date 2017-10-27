@@ -1,5 +1,6 @@
 #include <iostream>
 #include "reactive_expressions.hpp"
+#include <cmath>
 
 
 int main()
@@ -41,7 +42,7 @@ int main()
 
       void update3()
       {
-         d3  = s1 * d1 / d2;
+         d3  = std::sin(s1) * d1 / d2;
       }
    };
 
@@ -70,6 +71,8 @@ int main()
 
 #else
 
+   auto sin = lazy_fun([](auto x){ return std::sin(x); });
+
    {
       PARAMETER( float, s1, 12 );
       PARAMETER( float, s2, -3 );
@@ -82,7 +85,7 @@ int main()
       ,  s2  = -3
       ,  d1  = 1.f / (1.f + s1*s1)
       ,  d2  = 1.f / (1.f + s2*s2)
-      ,  d3  = s1 * d1 / d2
+      ,  d3  = sin(s1) * d1 / d2
       );
 
 

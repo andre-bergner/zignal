@@ -87,6 +87,7 @@ namespace building_blocks
    using assign_parameter = assign< terminal<parameter<_,_>> , _ >;
 
 
+   // ---------------------------------------------------------------------------------------------
 
    struct make_set : callable_decltype
    {
@@ -398,12 +399,34 @@ namespace building_blocks
 */
 
 
+   template <typename F, typename... Args>
+   struct result_type_wrapper : F
+   {
+      using result_type = decltype( std::declval<F>()( std::declval<Args>()... ) );
+      using F::operator();
+   };
+
+   template <typename Function>
+   auto lazy_fun(Function f)
+   {
+      return [f=std::move(f)](auto const &arg)
+      {
+         using namespace boost::proto;
+         using arg_t = decltype( eval{}(arg) );
+
+         return make_expr<tag::function>(
+            result_type_wrapper<decltype(f), arg_t>{f}, arg
+         );
+      };
+   }
+
 }
 
 
 
 using building_blocks::parameter;
 using building_blocks::make_terminal;
+using building_blocks::lazy_fun;
 using building_blocks::get_value;
 using building_blocks::get_parameter;
 using building_blocks::eval;
