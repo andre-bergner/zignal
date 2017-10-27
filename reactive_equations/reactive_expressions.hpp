@@ -34,7 +34,70 @@ namespace building_blocks
 
    struct copy_generator : pod_generator< copy_expr > {};
 
-   struct copy_domain : domain< copy_generator >
+   /*
+   struct grammar : or_
+   <  or_
+      <  unary_plus<_>
+      ,  negate<_>
+      ,  dereference<_>
+      ,  complement<_>
+      ,  address_of<_>
+      ,  logical_not<_>
+      ,  pre_inc<_>
+      ,  pre_dec<_>
+      >
+   ,  or_
+      <  post_inc<_>
+      ,  post_dec<_>
+      ,  shift_left<_,_>
+      ,  shift_right<_,_>
+      ,  multiplies<_,_>
+      ,  divides<_,_>
+      ,  modulus<_,_>
+      ,  plus<_,_>
+      ,  minus<_,_>
+      >
+   ,  or_
+      <  less<_,_>
+      ,  greater<_,_>
+      ,  less_equal<_,_>
+      ,  greater_equal<_,_>
+      ,  equal_to<_,_>
+      ,  not_equal_to<_,_>
+      ,  logical_or<_,_>
+      ,  logical_and<_,_>
+      >
+   ,  or_
+      <  bitwise_and<_,_>
+      ,  bitwise_or<_,_>
+      ,  bitwise_xor<_,_>
+      ,  mem_ptr<_,_>
+      //,  comma<_,_>
+      ,  assign<_,_>
+      ,  shift_left_assign<_,_>
+      ,  shift_right_assign<_,_>
+      >
+   ,  or_
+      <  multiplies_assign<_,_>
+      ,  divides_assign<_,_>
+      ,  modulus_assign<_,_>
+      ,  plus_assign<_,_>
+      ,  minus_assign<_,_>
+      ,  bitwise_and_assign<_,_>
+      ,  bitwise_or_assign<_,_>
+      ,  bitwise_xor_assign<_,_>
+      ,  subscript<_,_>
+      >
+   //<  plus< grammar, grammar >
+   //,  minus< grammar, grammar >
+   //,  multiplies<_,_>
+   //,  divides< grammar, grammar >
+   //,  terminal< _ >
+   >
+   {};
+   */
+
+   struct copy_domain : domain< copy_generator/*,grammar*/ >
    {
       template < typename T >
       struct as_child : proto_base_domain::as_expr<T> {};
@@ -409,13 +472,11 @@ namespace building_blocks
    template <typename Function>
    auto lazy_fun(Function f)
    {
-      return [f=std::move(f)](auto const &arg)
+      return [f=std::move(f)](auto&&... args)
       {
          using namespace boost::proto;
-         using arg_t = decltype( eval{}(arg) );
-
          return make_expr<tag::function>(
-            result_type_wrapper<decltype(f), arg_t>{f}, arg
+            result_type_wrapper<decltype(f), decltype(eval{}(args))...>{f}, args...
          );
       };
    }
