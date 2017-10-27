@@ -118,8 +118,8 @@ namespace building_blocks
    <  when< just_parameter, make_set(_value) >
    ,  when< terminal<_>, meta::type_set<>() >
    ,  when
-      <  binary_expr<_,_,_>
-      ,  merge_set( collect_dependendencies(_left), collect_dependendencies(_right) )
+      <  nary_expr<_, vararg<_>>
+      ,  fold<_, meta::type_set<>(), merge_set(collect_dependendencies, _state) >
       >
    ,  when< _ , _default<collect_dependendencies> >
    >
