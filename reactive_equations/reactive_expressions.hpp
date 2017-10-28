@@ -4,6 +4,7 @@
 // • dependent values must be read-only!
 // • rename get_value to something like get_state or get_memory ...
 // • eval_assign_expr should check that rhs exists, error otherwise
+// • set/get-wrapper to allow parameter wrap existing object's properties
 
 
 
@@ -34,70 +35,71 @@ namespace building_blocks
 
    struct copy_generator : pod_generator< copy_expr > {};
 
-   /*
-   struct grammar : or_
-   <  or_
-      <  unary_plus<_>
-      ,  negate<_>
-      ,  dereference<_>
-      ,  complement<_>
-      ,  address_of<_>
-      ,  logical_not<_>
-      ,  pre_inc<_>
-      ,  pre_dec<_>
-      >
-   ,  or_
-      <  post_inc<_>
-      ,  post_dec<_>
-      ,  shift_left<_,_>
-      ,  shift_right<_,_>
-      ,  multiplies<_,_>
-      ,  divides<_,_>
-      ,  modulus<_,_>
-      ,  plus<_,_>
-      ,  minus<_,_>
-      >
-   ,  or_
-      <  less<_,_>
-      ,  greater<_,_>
-      ,  less_equal<_,_>
-      ,  greater_equal<_,_>
-      ,  equal_to<_,_>
-      ,  not_equal_to<_,_>
-      ,  logical_or<_,_>
-      ,  logical_and<_,_>
-      >
-   ,  or_
-      <  bitwise_and<_,_>
-      ,  bitwise_or<_,_>
-      ,  bitwise_xor<_,_>
-      ,  mem_ptr<_,_>
-      //,  comma<_,_>
-      ,  assign<_,_>
-      ,  shift_left_assign<_,_>
-      ,  shift_right_assign<_,_>
-      >
-   ,  or_
-      <  multiplies_assign<_,_>
-      ,  divides_assign<_,_>
-      ,  modulus_assign<_,_>
-      ,  plus_assign<_,_>
-      ,  minus_assign<_,_>
-      ,  bitwise_and_assign<_,_>
-      ,  bitwise_or_assign<_,_>
-      ,  bitwise_xor_assign<_,_>
-      ,  subscript<_,_>
-      >
-   //<  plus< grammar, grammar >
-   //,  minus< grammar, grammar >
-   //,  multiplies<_,_>
-   //,  divides< grammar, grammar >
-   //,  terminal< _ >
-   >
-   {};
+   struct grammar;
+
+   using allowed_unary_ops = or_
+   <  unary_plus<grammar>
+   ,  negate<grammar>
+   ,  dereference<grammar>
+   ,  complement<grammar>
+   ,  address_of<grammar>
+   ,  logical_not<grammar>
+   >;
+
+   using allowed_binary_ops = or_
+   <  shift_left<_,_>
+   ,  shift_right<_,_>
+   ,  multiplies<_,_>
+   ,  divides<_,_>
+   ,  modulus<_,_>
+   ,  plus<_,_>
+   ,  minus<_,_>
+   >;
+
+   using allowed_comparison_ops = or_
+   <  less<_,_>
+   ,  greater<_,_>
+   ,  less_equal<_,_>
+   ,  greater_equal<_,_>
+   ,  equal_to<_,_>
+   ,  not_equal_to<_,_>
+   >;
+
+   using allowed_logical_ops = or_
+   <  logical_or<_,_>
+   ,  logical_and<_,_>
+   ,  bitwise_and<_,_>
+   ,  bitwise_or<_,_>
+   ,  bitwise_xor<_,_>
+   >;
+
+   /* not supported
+      mem_ptr<_,_>
+      comma<_,_>
+      shift_left_assign<_,_>
+      shift_right_assign<_,_>
+      multiplies_assign<_,_>
+      divides_assign<_,_>
+      modulus_assign<_,_>
+      plus_assign<_,_>
+      minus_assign<_,_>
+      bitwise_and_assign<_,_>
+      bitwise_or_assign<_,_>
+      bitwise_xor_assign<_,_>
    */
 
-   struct copy_domain : domain< copy_generator/*,grammar*/ >
+   struct grammar : or_
+   <  allowed_unary_ops
+   ,  allowed_binary_ops
+   ,  allowed_comparison_ops
+   ,  allowed_logical_ops
+   ,  assign<_,_>
+   ,  subscript<_,_>
+   ,  terminal<_>
+   >
+   {};
+
+   struct copy_domain : domain< copy_generator, grammar >
    {
       template < typename T >
       struct as_child : proto_base_domain::as_expr<T> {};
