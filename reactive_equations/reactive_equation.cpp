@@ -6,12 +6,12 @@
 
 int main()
 {
-   PARAMETER( float, a, 1337 );
-   PARAMETER( float, b, 47 );
-   PARAMETER( float, c, 0 );
-   PARAMETER( float, d, 0 );
-   PARAMETER( float, a_1, 0 );
-   PARAMETER( std::string, name, "hello" );
+   PARAMETER( float, a );
+   PARAMETER( float, b );
+   PARAMETER( float, c );
+   PARAMETER( float, d );
+   PARAMETER( float, a_1 );
+   PARAMETER( std::string, name );
 
    std::cout << "created params." << std::endl;
    std::cout << "----------------------------------" << std::endl;

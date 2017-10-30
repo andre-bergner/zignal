@@ -21,6 +21,8 @@
 #include <boost/proto/debug.hpp>
 #include <boost/mpl/set.hpp>
 #include <boost/mpl/fold.hpp>
+#include <iso646.h>
+
 
 namespace building_blocks
 {
@@ -469,6 +471,7 @@ namespace building_blocks
    {
       using result_type = decltype( std::declval<F>()( std::declval<Args>()... ) );
       using F::operator();
+      result_type_wrapper(F const& f) : F(f) {}
    };
 
    template <typename Function>
@@ -477,9 +480,8 @@ namespace building_blocks
       return [f=std::move(f)](auto&&... args)
       {
          using namespace boost::proto;
-         return make_expr<tag::function>(
-            result_type_wrapper<decltype(f), decltype(eval{}(args))...>{f}, args...
-         );
+         using wrapped_func_t = result_type_wrapper<decltype(f), decltype(eval{}(args))...>;
+         return make_expr<tag::function>( wrapped_func_t{f}, std::forward<decltype(args)>(args)... );
       };
    }
 
@@ -502,9 +504,9 @@ using building_blocks::is_valid_expression_v;
 using building_blocks::depth_first_search_t;
 
 
-#define PARAMETER(TYPE,NAME,VALUE)  \
+#define PARAMETER(TYPE, NAME)  \
    struct NAME##_t {};  \
-   decltype(make_terminal(parameter<NAME##_t,TYPE>{}))  NAME = make_terminal(parameter<NAME##_t,TYPE>{VALUE});
+   decltype(make_terminal(parameter<NAME##_t, TYPE>{}))  NAME = make_terminal(parameter<NAME##_t, TYPE>{});
 
 
 
@@ -550,13 +552,16 @@ struct dependency_manager
       get_value(std::get<N>(exprs)) = eval_assign_expr{}(std::get<N>(exprs),exprs);
    }
 
-   template <typename keys_t, typename... P>
-   void update_parameters(meta::type_set<P...>&&)
+   template <typename keys_t>
+   void update_parameters(meta::type_set<>&&)
+   {}
+
+   template <typename keys_t, typename P, typename... Ps>
+   void update_parameters(meta::type_set<P,Ps...>&&)
    {
-      // TODO ifdef C++17 use fold expression
-      [](...){}(1,
-        (update_parameter<meta::index_of_v<keys_t, P>>(), void(), int{})...
-      );
+       // TODO C++17 use fold expression
+       update_parameter<meta::index_of<keys_t, P>::value>();
+       update_parameters<keys_t>(meta::type_set<Ps...>{});
    }
 
    /*

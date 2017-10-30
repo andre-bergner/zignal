@@ -74,11 +74,11 @@ int main()
    auto sin = lazy_fun([](auto x){ return std::sin(x); });
 
    {
-      PARAMETER( float, s1, 12 );
-      PARAMETER( float, s2, -3 );
-      PARAMETER( float, d1, 0 );
-      PARAMETER( float, d2, 0 );
-      PARAMETER( float, d3, 0 );
+      PARAMETER( float, s1 );
+      PARAMETER( float, s2 );
+      PARAMETER( float, d1 );
+      PARAMETER( float, d2 );
+      PARAMETER( float, d3 );
 
       auto deps = make_mapping_dag
       (  s1  = 12

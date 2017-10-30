@@ -14,25 +14,25 @@ int main()
    auto to_string = lazy_fun([](auto x){ return std::to_string(x); });
 
 
-   PARAMETER( float, sr, {} );
-   PARAMETER( float, freq, {} );
-   PARAMETER( float, Q, {} );
-   PARAMETER( float, alpha, {} );
-   PARAMETER( float, w0, {} );
-   PARAMETER( float, cosw0, {} );
-   PARAMETER( float, a0, {} );
-   PARAMETER( float, a1, {} );
-   PARAMETER( float, a2, {} );
-   PARAMETER( float, b0, {} );
-   PARAMETER( float, b1, {} );
-   PARAMETER( float, b2, {} );
-   PARAMETER( std::string, label_a0, {} );
-   PARAMETER( std::string, label_a1, {} );
-   PARAMETER( std::string, label_a2, {} );
-   PARAMETER( std::string, label_b0, {} );
-   PARAMETER( std::string, label_b1, {} );
-   PARAMETER( std::string, label_b2, {} );
-   PARAMETER( std::string, label_prefix, {} );
+   PARAMETER( float, sr );
+   PARAMETER( float, freq );
+   PARAMETER( float, Q );
+   PARAMETER( float, alpha );
+   PARAMETER( float, w0 );
+   PARAMETER( float, cosw0 );
+   PARAMETER( float, a0 );
+   PARAMETER( float, a1 );
+   PARAMETER( float, a2 );
+   PARAMETER( float, b0 );
+   PARAMETER( float, b1 );
+   PARAMETER( float, b2 );
+   PARAMETER( std::string, label_a0 );
+   PARAMETER( std::string, label_a1 );
+   PARAMETER( std::string, label_a2 );
+   PARAMETER( std::string, label_b0 );
+   PARAMETER( std::string, label_b1 );
+   PARAMETER( std::string, label_b2 );
+   PARAMETER( std::string, label_prefix );
 
    //auto state = rex::make_reactive_expressions
    auto state = make_mapping_dag
