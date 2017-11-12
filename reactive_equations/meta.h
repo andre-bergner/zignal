@@ -136,12 +136,16 @@ namespace meta {
    using fold_t = typename fold<MetaFunction, Init, TypeContainer>::type;
 
 
-   template <template <typename...> class TypeContainer, typename Function, typename... Ts>
-   void for_each(TypeContainer<Ts...>&&, Function&& f)
+
+   template <template <typename...> class TypeContainer, typename Function>
+   void for_each(TypeContainer<>&&, Function&& f)
+   {}
+
+   template <template <typename...> class TypeContainer, typename Function, typename T, typename... Ts>
+   void for_each(TypeContainer<T, Ts...>&&, Function&& f)
    {
-      [](...){}(1,
-        (f(Ts{}), void(), int{})...
-      );
+      f(T{});
+      for_each(TypeContainer<Ts...>{}, std::forward<Function>(f));
    }
 
 
