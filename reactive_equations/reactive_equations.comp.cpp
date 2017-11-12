@@ -86,7 +86,7 @@ int main()
       PARAMETER( float, d2 );
       PARAMETER( float, d3 );
 
-      auto deps = make_mapping_dag
+      auto deps = make_reactive_expressions
       (  s1  = 12
       ,  s2  = -3
       ,  d1  = 1.f / (1.f + s1*s1)

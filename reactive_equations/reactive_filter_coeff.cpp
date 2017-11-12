@@ -35,7 +35,7 @@ int main()
    PARAMETER( std::string, label_prefix );
 
    //auto state = rex::make_reactive_expressions
-   auto state = make_mapping_dag
+   auto state = make_reactive_expressions
    (  sr    = 44100.f
    ,  freq  = 440.
    ,  Q     = 1. / std::sqrt(2.)

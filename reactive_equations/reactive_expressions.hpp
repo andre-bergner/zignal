@@ -6,6 +6,7 @@
 // • eval_assign_expr should check that rhs exists, error otherwise
 // • set/get-wrapper to allow parameter wrap existing object's properties
 
+// • win version: http://rextester.com/SYPKT89979
 
 
 
@@ -631,7 +632,7 @@ struct dependency_manager
 
 
 template <typename... Expressions>
-auto make_mapping_dag( Expressions&&... es )
+auto make_reactive_expressions( Expressions&&... es )
 {
    static_assert( meta::fold_and_v< is_valid_expression_v<Expressions>...>
                 , "At least one expression malformed. "
@@ -639,10 +640,6 @@ auto make_mapping_dag( Expressions&&... es )
                 );
    using expr_list_t = meta::type_list<Expressions...>;
    using dependency_map_t = meta::fold_t< insert_dependendencies_t, meta::type_map<>, expr_list_t >;
-
-
-   eval  e;
-   [](...){}( (e(es),0)... );
 
    using expression_t = std::tuple<Expressions... >;
    return dependency_manager<dependency_map_t, expression_t>{ std::forward_as_tuple(es...) };

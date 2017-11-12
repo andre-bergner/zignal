@@ -26,7 +26,7 @@ int main()
 
    std::cout << "created dependency DAG." << std::endl;
 
-   auto deps = make_mapping_dag
+   auto deps = make_reactive_expressions
    (  a    = 1337
    ,  b    = 47
    ,  c    = (b + 1.f) * a_1 + a
