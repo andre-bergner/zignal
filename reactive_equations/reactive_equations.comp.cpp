@@ -28,10 +28,16 @@ int main()
          update1();
       }
 
+      void set_s2(float x)
+      {
+         s2 = x;
+         update2();
+      }
+
       void update1()
       {
          d1  = 1.f / (1.f + s1*s1);
-         update2();
+         update3();
       }
 
       void update2()
@@ -54,7 +60,7 @@ int main()
 
    volatile float new_s1 = 1337.f;
 
-#if 0
+#if 1
 
    {
       HandCrafted h;
