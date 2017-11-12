@@ -10,5 +10,5 @@ and data flow modelling. It currently contains two independent sub-projects.
 
 ## Reactive Expressions
 
-[Reactive Expressions](reactive_expressions/README.md) is a little C++ tool to model
+[Reactive Expressions](reactive_equations/README.md) is a little C++ tool to model
 dependency graphs of expressions at compile time and allow to update them efficiently.
