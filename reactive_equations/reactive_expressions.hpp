@@ -506,8 +506,8 @@ using building_blocks::depth_first_search_t;
 
 
 #define PARAMETER(TYPE, NAME)  \
-   struct NAME##_t {};  \
-   decltype(make_terminal(parameter<NAME##_t, TYPE>{}))  NAME = make_terminal(parameter<NAME##_t, TYPE>{});
+   decltype(make_terminal(parameter<struct NAME##_t, TYPE>{}))  \
+   NAME = make_terminal(parameter<struct NAME##_t, TYPE>{});
 
 
 
