@@ -281,6 +281,28 @@ namespace building_blocks
 
 
 
+   // a real topological sort
+   template <typename AdjacencyMap, typename Node, typename Path = meta::type_set<> >
+   struct topological_sort;
+
+   template <typename AdjacencyMap, typename T0, typename FlatPath = meta::type_set<> >
+   using topological_sort_t = typename topological_sort<AdjacencyMap, T0, FlatPath>::type;
+
+   template <typename AdjacencyMap, typename Node, typename Path>
+   struct topological_sort
+   {
+      template <typename List, typename N>
+      using visit_the_unknown = std::conditional_t
+      <  meta::contains_v<N, List>
+      ,  List
+      ,  topological_sort_t<AdjacencyMap, N, List>
+      >;
+
+      using out_edges = meta::type_at_t<AdjacencyMap, Node>;
+      using type = meta::prepend_t< meta::fold_t<visit_the_unknown, Path, out_edges>, Node >;
+   };
+
+
    // this is used as a topological sort of nodes
    template <typename AdjacencyMap, typename Entry, typename FlatPath = meta::type_set<> >
    struct depth_first_search
@@ -503,6 +525,7 @@ using building_blocks::parameters_t;
 using building_blocks::extract_parameter_value;
 using building_blocks::is_valid_expression_v;
 using building_blocks::depth_first_search_t;
+using building_blocks::topological_sort_t;
 
 
 #define PARAMETER(TYPE, NAME)  \
@@ -600,7 +623,8 @@ struct dependency_manager
       auto& expr = std::get<n>(exprs);
       get_value(expr) = x;
 
-      using deep_dependees_t = depth_first_search_t<map_t, key_t>;
+      //using deep_dependees_t = depth_first_search_t<map_t, key_t>;
+      using deep_dependees_t = meta::remove_t<topological_sort_t<map_t, key_t>, key_t>;
       //std::cout << type_name<deep_dependees_t>() << std::endl;
 
       update_parameters<keys_t>(deep_dependees_t{});

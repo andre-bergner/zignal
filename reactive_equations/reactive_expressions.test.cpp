@@ -3,7 +3,7 @@
 
 #include "reactive_expressions.hpp"
 
-int main()
+void basic_update_mechanism()
 {
    PARAMETER( float, s1 );
    PARAMETER( float, s2 );
@@ -31,4 +31,70 @@ int main()
    assert( deps.get(d1) == 1.f / 144.f );
    assert( deps.get(d2) == (1.f / 144.f) * 12.f );
    assert( deps.get(d3) == 1.f );
+}
+
+
+void correct_update_order()
+{
+   PARAMETER( std::string, a );
+   PARAMETER( std::string, b );
+   PARAMETER( std::string, c );
+   PARAMETER( std::string, d );
+
+   auto order1 = make_reactive_expressions
+   (  a = "a"
+   ,  b = a + "b"
+   ,  c = b + "c"
+   ,  d = c + b
+   );
+
+   auto order2 = make_reactive_expressions
+   (  a = "a"
+   ,  c = b + "c"
+   ,  d = c + b
+   ,  b = a + "b"
+   );
+
+   auto order3 = make_reactive_expressions
+   (  d = c + b
+   ,  c = b + "c"
+   ,  b = a + "b"
+   ,  a = "a"
+   );
+
+   assert( order1.get(d) == "abcab" );
+   assert( order2.get(d) == "abcab" );
+   assert( order3.get(d) == "abcab" );
+}
+
+
+
+void correct_update_order2()
+{
+   PARAMETER( std::string, a );
+   PARAMETER( std::string, b );
+   PARAMETER( std::string, c );
+   PARAMETER( std::string, d );
+
+   std::string path;
+   auto lb = lazy_fun([&](auto)      { path += "b"; return "b"; });
+   auto lc = lazy_fun([&](auto)      { path += "c"; return "c"; });
+   auto ld = lazy_fun([&](auto,auto) { path += "d"; return "d"; });
+
+   auto order1 = make_reactive_expressions
+   (  a = 0
+   ,  d = ld(b,c)
+   ,  b = lb(a)
+   ,  c = lc(b)
+   );
+
+   assert( path == "bcd" );
+}
+
+
+int main()
+{
+   basic_update_mechanism();
+   correct_update_order();
+   correct_update_order2();
 }

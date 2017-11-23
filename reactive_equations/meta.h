@@ -98,6 +98,13 @@ namespace meta {
    using force_insert_t = typename force_insert<TypeContainer, T, V>::type;
 
 
+   template <typename TypeContainer, typename T, typename V = void>
+   struct prepend;
+
+   template <typename TypeContainer, typename T, typename V = void>
+   using prepend_t = typename prepend<TypeContainer, T, V>::type;
+
+
    // remove removes element T (or key value pair {T,V}) from type list, set, or map if present.
    // For a list it only removes the first occurence.
    template <typename TypeContainer, typename T>
@@ -216,6 +223,14 @@ namespace meta {
    <  contains_v<T, type_list<Us...>>
    ,  type_set<Us...>
    ,  type_set<Us...,T>
+   >
+   {};
+
+   template <typename T, typename... Us>
+   struct prepend< type_set<Us...>, T > : std::conditional
+   <  contains_v<T, type_list<Us...>>
+   ,  type_set<Us...>
+   ,  type_set<T,Us...,T>
    >
    {};
 

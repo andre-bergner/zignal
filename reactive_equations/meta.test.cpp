@@ -81,6 +81,11 @@ int main()
    cout << type_name< force_insert_t<type_set<char, float>, char> >() << endl;
 
 
+   static_assert(std::is_same_v<
+      prepend_t<type_set<char, float>, int>,
+      type_set<int, char, float>
+   >);
+
 
    cout << "--------------------------------------" << endl;
 
